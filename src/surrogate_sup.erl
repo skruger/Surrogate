@@ -4,7 +4,7 @@
 %%%
 %%% Created : Oct 30, 2010
 %%% -------------------------------------------------------------------
--module(fastproxy_sup).
+-module(surrogate_sup).
 
 -behaviour(supervisor).
 %% --------------------------------------------------------------------
@@ -66,6 +66,12 @@ init([]) ->
 		   []},
 		  {filter_sup,
 		   {filter_sup,start_link,[]},
+		   permanent,
+		   10000,
+		   worker,
+		   []},
+		  {balance_sup,
+		   {balance_sup,start_link,[]},
 		   permanent,
 		   10000,
 		   worker,

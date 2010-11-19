@@ -2,27 +2,46 @@
 %%% Author  : skruger
 %%% Description :
 %%%
-%%% Created : Oct 30, 2010
+%%% Created : Nov 17, 2010
 %%% -------------------------------------------------------------------
--module(proxy_transparent_listener).
+-module(balancer).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("filterproxy.hrl").
+
 %% --------------------------------------------------------------------
 %% External exports
--export([]).
+-export([start_pool/2,next/1,stop/1,state/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {listen_args,sock,headers,request,recv_buff}).
+-record(state, {mode,hostlist,host_count,lasthost}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
+
+start_pool(Poolname,Mode) ->
+	Pools = proxyconf:get(balance_pools,[]),
+	PoolProps = proplists:get_value(Poolname,Pools),
+	case proplists:get_value(hosts,PoolProps,[]) of
+		[] ->
+			{error,nomembers};
+		PoolMembers ->
+			Pname = proxylib:get_pool_process(Poolname),
+			gen_server:start_link(Pname,?MODULE,[PoolMembers,Mode],[])
+	end.
+	
+next(Pool) ->
+	gen_server:call(proxylib:get_pool_process(Pool),next).
+stop(Pool) ->
+	gen_server:call(proxylib:get_pool_process(Pool),stop).
+
+state(Pool) ->
+	gen_server:call(proxylib:get_pool_process(Pool),state).
 
 
 %% ====================================================================
@@ -37,23 +56,9 @@
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init(Args) ->
-    Self = self(),
-	F = fun() -> do_accept(Self,Args#proxy_listener.listen_sock) end,
-	spawn_link(F),
-    {ok, #state{listen_args =Args,headers=[],request=none,recv_buff=[]}}.
-
-
-do_accept(Parent,Listen) ->
-	case gen_tcp:accept(Listen,300000) of
-		{ok,Sock} ->
-%% 			io:format("do_accept() socket ~p for ~p~n",[Sock,Parent]),
-			gen_tcp:controlling_process(Sock,Parent),
-			gen_server:cast(Parent,{accept,{ok,Sock}});
-		Err ->
-			gen_server:cast(Parent,{accept,Err})
-	end.
-
+init([PoolMembers,Mode]) ->
+	io:format("members: ~p~n",[PoolMembers]),
+    {ok, #state{mode=Mode,hostlist=PoolMembers,lasthost=0,host_count=length(PoolMembers)}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -65,9 +70,18 @@ do_accept(Parent,Listen) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call(Request, _From, State) ->
+handle_call(next,_From,State) when State#state.mode == roundrobin ->
+	NextHost = (State#state.lasthost + 1) rem State#state.host_count,
+	io:format("~p returning host: ~p~n",[?MODULE,NextHost+1]),
+	Host = lists:nth(NextHost+1,State#state.hostlist),
+	{reply,Host,State#state{lasthost=NextHost}};
+handle_call(stop,From,State) ->
+	gen_server:reply(From,stop),
+	{stop,normal,State};
+handle_call(state,From,State) ->
+	{reply,State,State};
+handle_call(_Request, _From, State) ->
     Reply = ok,
-	io:format("~p: Unknown call: ~p~n",[?MODULE,Request]),
     {reply, Reply, State}.
 
 %% --------------------------------------------------------------------
@@ -77,36 +91,7 @@ handle_call(Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast(handle_request,State)->
-	io:format("~p got all headers, processing request:~n~p~n~p~nrecv_buff:~n~p~n",[?MODULE,State#state.request,State#state.headers,State#state.recv_buff]),
-	{ok,Pid} = proxy_pass:start(#proxy_pass{request=State#state.request,headers=State#state.headers,recv_buff=State#state.recv_buff}),
-	Sock = State#state.sock,
-%% 	io:format("Sock: ~p~n",[Sock]),
-	gen_tcp:controlling_process(Sock,Pid),
-	gen_fsm:send_event(Pid,{socket,Sock}),
-	{stop,normal,State};
-handle_cast({accept,{ok,Sock}},State) ->
-	gen_server:cast((State#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
-%% 	inet:setopts(Sock,[{active,true}]),
-	{ok,Parse} = header_parse:start_link(),
-	ProxyPass = header_parse:receive_headers(Parse,Sock),
-	case proxylib:parse_request(ProxyPass#proxy_pass.request) of
-		Req ->
-			{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{proxy_type=Req#request_rec.proxytype}),
-			gen_tcp:controlling_process(Sock,Pid),
-			gen_fsm:send_event(Pid,{socket,Sock}),
-			{stop,normal,State}
-	end;
-handle_cast({accept,{error,timeout}},State) ->
-	gen_server:cast((State#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
-	{stop,normal,State};
-handle_cast({accept,Other},State) ->
-	io:format("Error in accept: ~p~n",[Other]),
-	gen_server:cast((State#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
-	{stop,normal,State};
-
 handle_cast(Msg, State) ->
-	io:format("~p: Unknown cast: ~p~n",[?MODULE,Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -117,7 +102,6 @@ handle_cast(Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(Info, State) ->
-	io:format("~p: Unknown info: ~p~n",[?MODULE,Info]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -125,7 +109,7 @@ handle_info(Info, State) ->
 %% Description: Shutdown the server
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
     ok.
 
 %% --------------------------------------------------------------------
@@ -133,7 +117,7 @@ terminate(_Reason, _State) ->
 %% Purpose: Convert process state when code is changed
 %% Returns: {ok, NewState}
 %% --------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
+code_change(OldVsn, State, Extra) ->
     {ok, State}.
 
 %% --------------------------------------------------------------------

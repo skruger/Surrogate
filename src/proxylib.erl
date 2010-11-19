@@ -11,6 +11,9 @@
 %% Exported Functions
 %%
 -export([header2dict/1,parse_host/2,parse_request/1,parse_response/1,parse_connect/1,combine_headers/1,split_headers/1,find_binary_pattern/2,method_has_data/2]).
+
+-export([get_pool_process/1]).
+
 -export([re/1]).
 %%
 %% API Functions
@@ -152,7 +155,10 @@ find_binary_pattern(Subject,Pat,Pos) ->
 			find_binary_pattern(NewSub,Pat,Pos+1)
 	end.
 
-			
+
+get_pool_process(PoolName) ->
+	{global,list_to_atom("balancer_pool_"++atom_to_list(PoolName))}.
+
 			%% 	string:str(binary_to_list(Subject),binary_to_list(Pat)).
 
 

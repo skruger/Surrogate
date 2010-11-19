@@ -1,5 +1,5 @@
 %file_comment
--module(fastproxy_app).
+-module(surrogate_app).
 
 -behaviour(application).
 %% --------------------------------------------------------------------
@@ -33,8 +33,9 @@
 run() ->
 	appmon:start(),
 	application:start(mnesia),
-	application:load(fastproxy),
-	application:start(fastproxy).
+	application:start(crypto),
+	application:load(surrogate),
+	application:start(surrogate).
 
 %% ====================================================================!
 %% External functions
@@ -47,7 +48,7 @@ run() ->
 %% --------------------------------------------------------------------
 start(_Type, StartArgs) ->
 	io:format("~p starting.~n",[?MODULE]),
-    case fastproxy_sup:start_link(StartArgs) of
+    case surrogate_sup:start_link(StartArgs) of
 	{ok, Pid} ->
 		io:format("~p supervisor started: ~p~n",[?MODULE,Pid]),
 	    {ok, Pid};

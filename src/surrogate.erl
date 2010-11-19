@@ -1,5 +1,5 @@
 
--module(fastproxy).
+-module(surrogate).
 
 %%
 %% Include files

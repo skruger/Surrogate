@@ -155,8 +155,12 @@ handle_cast(load_deny_hosts,State) ->
 		FileName ->
 			case file:read_file(FileName) of
 				{ok,FileContents} ->
-					mnesia:clear_table(filter_host_list),
-					split_lines(binary_to_list(FileContents));
+					F = fun() ->
+								mnesia:clear_table(filter_host_list),
+								split_lines(binary_to_list(FileContents))
+						end,
+					Res = mnesia:transaction(F),
+					io:format("load_deny_hosts: ~p~n",[Res]);
 				Error ->
 					io:format("~p could not open file: ~p (~p)~n",[?MODULE,FileName,Error])
 			end
@@ -208,11 +212,11 @@ split_lines(File) ->
 %% 	io:format("~p,~p~n",[File]),
 	case string:str(File,"\n") of
 		0 ->
-			mnesia:dirty_write(#filter_host_list{host=File,rule=deny}),
+			mnesia:write(#filter_host_list{host=File,rule=deny}),
 			ok;
 		Idx ->
  			Name = string:substr(File,1,Idx-1),
-			mnesia:dirty_write(#filter_host_list{host=Name,rule=deny}),
+			mnesia:write(#filter_host_list{host=Name,rule=deny}),
 			Rest = string:substr(File,Idx+1),
 			split_lines(Rest)
 	end.

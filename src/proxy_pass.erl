@@ -44,6 +44,8 @@ start(Args) ->
 %%          ignore                              |
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
+%% init({balance,Pool}) ->
+	
 init(Args) ->
     {ok, proxy_start, Args}.
 
@@ -59,12 +61,38 @@ proxy_start({socket,CSock},State) ->
 			io:format("No auth.~n"),
 			gen_fsm:send_event(self(),start),
 			{next_state,proxy_connect,State#proxy_pass{client_sock=CSock}};
-		AuthInfo ->
-			gen_fsm:send_event(self(),{check_auth,AuthInfo}),
+		_AuthCfg when State#proxy_pass.userinfo =/= undefined ->
+			io:format("Already had auth: ~p~n",[State#proxy_pass.userinfo]),
+			gen_fsm:send_event(self(),start),
+			{next_state,proxy_connect,State#proxy_pass{client_sock=CSock}};
+		AuthCfg ->
+			gen_fsm:send_event(self(),{check_auth,AuthCfg}),
 			{next_state,proxy_auth,State#proxy_pass{client_sock=CSock}}
+	end;
+proxy_start({reverse_proxy,CSock,{host,Host,Port}=_Addr}=L,State) ->
+	io:format("proxy_start() ~p~n",[L]),
+	case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],60000) of
+		{ok,SSock} ->
+			gen_fsm:send_event(self(),{headers,State#proxy_pass.headers}),
+			{next_state,client_send,State#proxy_pass{client_sock=CSock,server_sock=SSock}};
+		Err ->
+			io:format("~p connect() error: ~p~n",[?MODULE,Err]),
+			{stop,normal,State}
+	end;
+proxy_start({balance,Pool,Port,Sock}=L,State) ->
+	io:format("Starting balancer: ~p~n",[L]),
+	case balancer:next(Pool) of
+		{IP,OPort} ->
+			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,OPort}}),
+			{next_state,proxy_start,State};
+		{_,_,_,_} = IP ->
+			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,Port}}),
+			{next_state,proxy_start,State};
+		_ ->
+			{stop,normal,State}
 	end.
 
-proxy_auth({check_auth,AuthInfo},State) ->
+proxy_auth({check_auth,_AuthCfg},State) ->
 %% 	io:format("Check auth: ~p~n",[AuthInfo]),
 	Dict = proxylib:header2dict(State#proxy_pass.headers),
 	case dict:find("proxy-authorization",Dict) of
@@ -77,13 +105,14 @@ proxy_auth({check_auth,AuthInfo},State) ->
 				Idx ->
 					User = string:substr(Auth2,1,Idx-1),
 					Pass = string:substr(Auth2,Idx+1),
-					io:format("User: ~p~nPass: ~p~n",[User,Pass]),
+					
 					case proxy_auth:check_user(User,Pass) of
-						ok ->
+						{ok,UserInfo} ->
+							io:format("User: ~p, Pass: ~p ok~n",[User,Pass]),
 							gen_fsm:send_event(self(),start),
-							{next_state,proxy_connect,State};
+							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo}};
 						Err ->
-							io:format("Authentication error for ~p: ~p~n",[User,Err]),
+							io:format("Authentication error for ~p: ~p (~p)~n",[User,Err,Pass]),
 							gen_fsm:send_event(self(),send_challenge),
 							{next_state,proxy_auth,State}
 					end
@@ -129,6 +158,7 @@ proxy_connect(open_socket,State) ->
 			io:format("~p didn't receive a host header: ~p~n",[?MODULE,dict:to_list(Dict)]),
 			{stop, normal,State}
 	end.
+
 
 							
 

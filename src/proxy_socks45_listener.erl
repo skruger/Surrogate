@@ -21,7 +21,7 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--record(state, {listen_args,recv_buff,client_sock}).
+-record(state, {listen_args,recv_buff,client_sock,userinfo}).
 
 %% ====================================================================
 %% External functions
@@ -90,7 +90,7 @@ socks_init({select_method,<<>>},StateData) ->
 socks_init({select_method,<<0:8/integer,_R/binary>>},State) ->
 	gen_tcp:send(State#state.client_sock,<<5:8/integer,0:8/integer>>),
 	gen_fsm:send_event(self(),recv_request),
-	{next_state,socks_request,State};
+	{next_state,socks_request,State#state{userinfo={socks5_user,anonymous}}};
 socks_init({select_method,<<M:8/integer,R/binary>>},State) ->
 	io:format("skipping unsupported SOCKS 5 authentication method: ~p~n",[M]),
 	gen_fsm:send_event(self(),{select_method,R}),
@@ -150,17 +150,19 @@ socks4_request({request,<<4:8/integer,1:8/integer,Port:16/integer,A:8,B:8,C:8,D:
 %% 	io:format("Trying to connect SOCKS 4 (~p:~p)~n",[Host,Port]),
 	UserSize = trunc(bit_size(Rest)/8)-1,
 	if UserSize > 0 ->
-		   <<_User:UserSize/binary,_/binary>> = Rest,
+		   <<User:UserSize/binary,_/binary>> = Rest,
+		   ProxyUser = binary_to_list(User),
 %% 		   io:format("SOCKS 4 User: ~p~n",[User]),
 		   ok;
 	   true ->
+		   ProxyUser = "nouser",
 		   ok
 	end,
 	if
 		Port == 80 ->
 			gen_tcp:send(State#state.client_sock,<<0:8/integer,90:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
 			gen_fsm:send_event(self(),{connect,4}),
-			{next_state,http_proxy,State};
+			{next_state,http_proxy,State#state{userinfo={socks4_user,ProxyUser}}};
 		true ->
 			case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
 				{ok,ServerSock} ->
@@ -186,7 +188,7 @@ http_proxy({connect,Ver},State) ->
 %% 	io:format("Connect SOCKS ~p to http through filter.~n",[Ver]),
 	{ok,Parse} = header_parse:start_link(),
 	ProxyPass = header_parse:receive_headers(Parse,Sock),
-	{ok,Pid} = proxy_pass:start(ProxyPass),
+	{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{userinfo=State#state.userinfo}),
 	case proxylib:parse_request(ProxyPass#proxy_pass.request) of
 		#request_rec{method="CONNECT"} ->
 			proxy_connect:http_connect(ProxyPass#proxy_pass{client_sock=Sock,proxy_type={socks,Ver}}),
