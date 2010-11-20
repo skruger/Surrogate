@@ -53,7 +53,7 @@ init([]) ->
 	io:format("~p supervisor init.~n",[?MODULE]),
     {ok,{{one_for_one,5,1}, 
 		 [{proxyconf,
-		   {proxyconf,start_link,["/home/skruger/erlang/workspace/FilterProxy/src/proxy.conf"]},
+		   {proxyconf,start_link,["Surrogate/conf/proxy.conf"]},
 		   permanent,
 		   10000,
 		   worker,

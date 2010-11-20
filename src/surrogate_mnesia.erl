@@ -5,7 +5,7 @@
 %% Include files
 %%
 
--include("filterproxy.hrl").
+-include("surrogate.hrl").
 
 %%
 %% Exported Functions

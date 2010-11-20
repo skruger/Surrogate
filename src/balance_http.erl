@@ -11,7 +11,7 @@
 %% Include files
 %% --------------------------------------------------------------------
 
--include("filterproxy.hrl").
+-include("surrogate.hrl").
 
 %% --------------------------------------------------------------------
 %% External exports
@@ -46,7 +46,7 @@ start_link(Args) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 init({balance_http,Bind,Port,Props}=L) ->
-	io:format("~p listening: ~p~n",[?MODULE,L]),
+	io:format("~p HTTP listening: ~p~n",[?MODULE,L]),
 	case gen_tcp:listen(Port,[Bind,inet,binary,{active,true},{reuseaddr,true}]) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
@@ -55,12 +55,12 @@ init({balance_http,Bind,Port,Props}=L) ->
 			io:format("~p could not start with args ~p~nError: ~p~n",[?MODULE,L,Err]),
 			{stop,error}
 	end;
-init({http,Listen,Port,Props,Parent}=L) ->
-	io:format("Got worker: ~p~n",[L]),
+init({http,Listen,Port,Props,Parent}=_L) ->
+%% 	io:format("Got worker: ~p~n",[L]),
 	gen_fsm:send_event(self(),wait),
 	{ok,accept_http,#worker_state{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
 init({balance_https,Bind,Port,KeyFile,CertFile,Props}=L)->
-	io:format("~p ssl listening: ~p~n",[?MODULE,L]),
+	io:format("~p HTTPS listening: ~p~n",[?MODULE,L]),
 	%Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,inet,binary,{active,true},{reuseaddr,true}],
 	Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{reuseaddr,true}],
 	case ssl:listen(Port,Opts) of
@@ -71,7 +71,7 @@ init({balance_https,Bind,Port,KeyFile,CertFile,Props}=L)->
 			io:format("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err]),
 			{stop,error}
 	end;
-init({https,Listen,Port,Props,Parent}=L) ->
+init({https,Listen,Port,Props,Parent}=_L) ->
 %% 	io:format("Got worker: ~p~n",[L]),
 	gen_fsm:send_event(self(),{wait,Listen}),
 	{ok,accept_https,#worker_state{type=https,listen_port=Port,proplist=Props,parent_pid=Parent}}.
@@ -115,7 +115,7 @@ accept_http(wait,State) ->
 			gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
 			gen_fsm:send_event(self(),get_headers),
 			inet:setopts(Sock,[{active,false}]),
-			io:format("~p Accepted ~p~n",[?MODULE,Sock]),
+%% 			io:format("~p Accepted ~p~n",[?MODULE,Sock]),
 			{next_state,http_balance,State#worker_state{client_sock=Sock}};
 		{error,timeout} ->
 			io:format("~p: Accept timeout, retrying.~n",[?MODULE]),
@@ -181,9 +181,6 @@ https_balance(get_headers,State) ->
 %%          {stop, Reason, NewStateData}                          |
 %%          {stop, Reason, Reply, NewStateData}
 %% --------------------------------------------------------------------
-state_name(Event, From, StateData) ->
-    Reply = ok,
-    {reply, Reply, state_name, StateData}.
 
 %% --------------------------------------------------------------------
 %% Func: handle_event/3
@@ -191,7 +188,7 @@ state_name(Event, From, StateData) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-handle_event(Event, StateName, StateData) ->
+handle_event(_Event, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -203,7 +200,7 @@ handle_event(Event, StateName, StateData) ->
 %%          {stop, Reason, NewStateData}                          |
 %%          {stop, Reason, Reply, NewStateData}
 %% --------------------------------------------------------------------
-handle_sync_event(Event, From, StateName, StateData) ->
+handle_sync_event(_Event, _From, StateName, StateData) ->
     Reply = ok,
     {reply, Reply, StateName, StateData}.
 
@@ -213,7 +210,7 @@ handle_sync_event(Event, From, StateName, StateData) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-handle_info(Info, StateName, StateData) ->
+handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -221,7 +218,7 @@ handle_info(Info, StateName, StateData) ->
 %% Purpose: Shutdown the fsm
 %% Returns: any
 %% --------------------------------------------------------------------
-terminate(Reason, StateName, StatData) ->
+terminate(_Reason, _StateName, _StatData) ->
     ok.
 
 %% --------------------------------------------------------------------
@@ -229,7 +226,7 @@ terminate(Reason, StateName, StatData) ->
 %% Purpose: Convert process state when code is changed
 %% Returns: {ok, NewState, NewStateData}
 %% --------------------------------------------------------------------
-code_change(OldVsn, StateName, StateData, Extra) ->
+code_change(_OldVsn, StateName, StateData, _Extra) ->
     {ok, StateName, StateData}.
 
 %% --------------------------------------------------------------------

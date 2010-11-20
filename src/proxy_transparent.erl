@@ -11,7 +11,7 @@
 %% Include files
 %% --------------------------------------------------------------------
 
--include("filterproxy.hrl").
+-include("surrogate.hrl").
 
 -define(LISTENERS,2).
 
