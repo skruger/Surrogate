@@ -1,0 +1,15 @@
+Surrogate is a forward and reverse proxy server.
+
+Developed using ErlIDE 0.8.1 with Eclipse Helios (3.6.0) using standard Erlang R13B 
+package included in Ubuntu 10.04.
+
+Forward proxy modes:
+http proxy with CONNECT support for SSL proxy.
+transparent HTTP proxy mode (no configuration changes required)
+SOCKS proxy supporting version 4 and version 5.
+
+Reverse proxy modes:
+HTTP load balancer
+HTTPS load balancer
+
+read conf/proxy.conf for configuration examples.  Please contact skruger at fastinfra.com with questions.
