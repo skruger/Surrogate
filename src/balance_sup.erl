@@ -68,7 +68,7 @@ init([]) ->
 	Listen = proxyconf:get(listeners,[]),
 	BChildren = balance_children(Listen,[]),
 	Children = PChildren++BChildren,
-	io:format("Staring ~p~n~p~n",[?MODULE,Children]),
+%% 	io:format("Staring ~p~n~p~n",[?MODULE,Children]),
 	{ok,{{one_for_all,0,1}, Children}}.
 
 balance_children([],C) ->

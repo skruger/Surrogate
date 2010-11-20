@@ -11,9 +11,11 @@
 %% Include files
 %% --------------------------------------------------------------------
 
+-include("filterproxy.hrl").
+
 %% --------------------------------------------------------------------
 %% External exports
--export([listen_master/2,accept_http/2,http_balance/2,start_link/1]).
+-export([listen_master/2,accept_http/2,http_balance/2,accept_https/2,https_balance/2,start_link/1]).
 
 %% gen_fsm callbacks
 -export([init/1,  handle_event/3,
@@ -56,7 +58,24 @@ init({balance_http,Bind,Port,Props}=L) ->
 init({http,Listen,Port,Props,Parent}=L) ->
 	io:format("Got worker: ~p~n",[L]),
 	gen_fsm:send_event(self(),wait),
-	{ok,accept_http,#worker_state{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}}.
+	{ok,accept_http,#worker_state{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
+init({balance_https,Bind,Port,KeyFile,CertFile,Props}=L)->
+	io:format("~p ssl listening: ~p~n",[?MODULE,L]),
+	%Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,inet,binary,{active,true},{reuseaddr,true}],
+	Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{reuseaddr,true}],
+	case ssl:listen(Port,Opts) of
+		{ok,Listen} ->
+			gen_fsm:send_event(self(),check_listeners),
+			{ok,listen_master,#socket_state{type=https,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
+		Err ->
+			io:format("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err]),
+			{stop,error}
+	end;
+init({https,Listen,Port,Props,Parent}=L) ->
+%% 	io:format("Got worker: ~p~n",[L]),
+	gen_fsm:send_event(self(),{wait,Listen}),
+	{ok,accept_https,#worker_state{type=https,listen_port=Port,proplist=Props,parent_pid=Parent}}.
+
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -73,7 +92,7 @@ listen_master(check_listeners,State)->
 	end,
 	{next_state,listen_master,State};
 listen_master(startchild,State) ->
-	io:format("~p starting child...~n",[?MODULE]),
+%% 	io:format("~p starting child...~n",[?MODULE]),
 	gen_fsm:send_event(self(),check_listeners),
 	case gen_fsm:start_link(?MODULE,{State#socket_state.type,State#socket_state.listener,State#socket_state.listen_port,State#socket_state.proplist,self()},[]) of
 		{ok,Pid} ->
@@ -114,6 +133,40 @@ http_balance(get_headers,State) ->
 	ProxyPass = header_parse:receive_headers(Parse,Sock),
 	{ok,Pid} = proxy_pass:start(ProxyPass),
 	gen_tcp:controlling_process(Sock,Pid),
+	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
+	Pool = proplists:get_value(pool,State#worker_state.proplist,undefined),
+	gen_fsm:send_event(Pid,{balance,Pool,Port,Sock}),
+	{stop,normal,State}.
+
+accept_https({wait,ListenSock},State) ->
+%% 	io:format("~p accept_https(),~p",[?MODULE,State]),
+	case ssl:transport_accept(ListenSock) of
+		{ok,Sock} ->
+			case ssl:ssl_accept(Sock) of
+				ok ->
+					gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
+					gen_fsm:send_event(self(),get_headers),
+					{next_state,https_balance,State#worker_state{client_sock=Sock}};
+				SSLErr ->
+					io:format("SSL Error: ~p~n",[SSLErr]),
+					{stop,normal,State}
+			end;
+		{error,timeout} ->
+			io:format("~p: Accept timeout, retrying.~n",[?MODULE]),
+			gen_fsm:send_event(self(),wait),
+			{next_state,accept,State};
+		Err ->
+			io:format("~p: Accept error: ~p~n",[?MODULE,Err]),
+			gen_server:cast({State#worker_state.parent_pid,self()}),
+			{stop,normal,State}
+	end.
+
+https_balance(get_headers,State) ->
+	{ok,Parse} = header_parse:start_link(),
+	Sock = State#worker_state.client_sock,
+	ProxyPass = header_parse:receive_ssl_headers(Parse,Sock),
+	{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{userinfo=balancer}),
+	ssl:controlling_process(Sock,Pid),
 	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
 	Pool = proplists:get_value(pool,State#worker_state.proplist,undefined),
 	gen_fsm:send_event(Pid,{balance,Pool,Port,Sock}),

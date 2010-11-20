@@ -72,13 +72,13 @@ init([PoolMembers,Mode]) ->
 %% --------------------------------------------------------------------
 handle_call(next,_From,State) when State#state.mode == roundrobin ->
 	NextHost = (State#state.lasthost + 1) rem State#state.host_count,
-	io:format("~p returning host: ~p~n",[?MODULE,NextHost+1]),
+%% 	io:format("~p returning host: ~p~n",[?MODULE,NextHost+1]),
 	Host = lists:nth(NextHost+1,State#state.hostlist),
 	{reply,Host,State#state{lasthost=NextHost}};
 handle_call(stop,From,State) ->
 	gen_server:reply(From,stop),
 	{stop,normal,State};
-handle_call(state,From,State) ->
+handle_call(state,_From,State) ->
 	{reply,State,State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
