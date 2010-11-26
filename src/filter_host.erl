@@ -160,14 +160,14 @@ handle_cast(load_deny_hosts,State) ->
 								split_lines(binary_to_list(FileContents))
 						end,
 					Res = mnesia:transaction(F),
-					io:format("load_deny_hosts: ~p~n",[Res]);
+					?INFO_MSG("load_deny_hosts: ~p~n",[Res]);
 				Error ->
-					io:format("~p could not open file: ~p (~p)~n",[?MODULE,FileName,Error])
+					?ERROR_MSG("~p could not open file: ~p (~p)~n",[?MODULE,FileName,Error])
 			end
 	end,
 	{noreply,State};
 handle_cast(load_deny_urls,State) ->
-	io:format("Loading urls.~n"),
+	?INFO_MSG("Loading urls.~n",[]),
 	case proplists:get_value(deny_urls,State#state.config,none) of
 		none ->
 			ok;
@@ -184,7 +184,7 @@ handle_cast(load_deny_urls,State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(state,State) ->
-	io:format("~p state:~n~p~n",[?MODULE,State]),
+	?ERROR_MSG("~p state:~n~p~n",[?MODULE,State]),
 	{noreply,State}.
 
 %% --------------------------------------------------------------------
@@ -227,7 +227,7 @@ load_urls(FileName,Rule) ->
 			mnesia:clear_table(filter_url_list),
 			load_url_lines(binary_to_list(FileContents),Rule);
 		Error ->
-			io:format("~p could not open file: ~p (~p)~n",[?MODULE,FileName,Error])
+			?ERROR_MSG("~p could not open file: ~p (~p)~n",[?MODULE,FileName,Error])
 	end.
 
 load_url_lines(FileData,Rule) ->
@@ -237,7 +237,7 @@ load_url_lines(FileData,Rule) ->
 						Path = string:strip(string:substr(Line,Idx),right,$/),
 						NewRule = #filter_url_list{host=Host,path=Path,rule=Rule},
 						mnesia:dirty_write(NewRule),
-						io:format("Inserting line: ~p as ~p~n",[Line,NewRule]),
+						?DEBUG_MSG("Inserting line: ~p as ~p~n",[Line,NewRule]),
 						ok
 				end,
 	case string:str(FileData,"\n") of

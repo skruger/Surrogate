@@ -28,16 +28,24 @@
 
 http_connect(ProxyPass) ->
 	{ok,Host,Port} = proxylib:parse_connect(ProxyPass#proxy_pass.request),
-	{ok,SvrSock} = gen_tcp:connect(Host,Port,[binary,{active,false}]),
-	ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
-	ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
-	gen_tcp:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
-	gen_tcp:controlling_process(SvrSock,ServerPid),
-	gen_tcp:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
-	ServerPid ! {client,ClientPid},
-	ClientPid ! {server,ServerPid},
-	ok.
-	 
+	case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
+		{ok,SvrSock} ->
+			ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
+			ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
+			gen_tcp:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
+			gen_tcp:controlling_process(SvrSock,ServerPid),
+			gen_tcp:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
+			ServerPid ! {client,ClientPid},
+			ClientPid ! {server,ServerPid},
+			ok;
+		{error,ErrStat} = Err ->
+			gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p",[ErrStat]))}),
+			Err
+	end.
+			
+
+%% 	?ACCESS_LOG(RCode,State#proxy_pass.request,State#proxy_pass.userinfo,SvrHeader#proxy_pass.request); 
+
 socks5_connect(ClientSock,ServerSock) ->
 	ServerPid = spawn(?MODULE,server_loop,[ServerSock,undefined]),
 	ClientPid = spawn(?MODULE,client_loop,[ClientSock,undefined]),
@@ -142,7 +150,7 @@ client_loop(Sock,SvrPid) ->
 			gen_tcp:close(Sock),
 			ok;
 		{tcp_error,Sock,Reason} ->
-			io:format("Socket closed: ~p~n",[Reason]),
+			?DEBUG_MSG("Socket closed: ~p~n",[Reason]),
 			SvrPid ! client_closed
 	end.
 		
@@ -170,7 +178,7 @@ server_loop(Sock,CliPid) ->
 			gen_tcp:close(Sock),
 			ok;
 		{tcp_error,Sock,Reason} ->
-			io:format("Server socket closed: ~p~n",[Reason]),
+			?DEBUG_MSG("Server socket closed: ~p~n",[Reason]),
 			CliPid ! server_closed
 	end.
 

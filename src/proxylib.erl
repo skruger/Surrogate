@@ -95,7 +95,7 @@ parse_request(Req) ->
 			case re:run(FullPath,HTTPPortProxy,[{capture,all,list}]) of
 				{match,[_,Host,PortStr,Path]} ->
 %% 					io:format("Match: ~p~n",[Array]),
-					io:format("Method: ~p~nHost: ~p~nPort: ~p~nPath: ~p~nProto: ~p~n~n",[Method,Host,PortStr,Path,Proto]),
+					?DEBUG_MSG("Method: ~p~nHost: ~p~nPort: ~p~nPath: ~p~nProto: ~p~n~n",[Method,Host,PortStr,Path,Proto]),
 					{Port,_} = string:to_integer(PortStr),
 					#request_rec{method=Method,host=Host,path=Path,port=Port,protocol=Proto,proxytype=http_proxy};
 				nomatch ->
@@ -120,7 +120,7 @@ parse_response(Res) ->
 			{Code,_} = string:to_integer(CodeT),
 			#response_rec{protocol=Proto,code=Code,text=Text};
 		Err ->
-			io:format("Invalid response format: ~p~n~p~n",[Res,Err])
+			?INFO_MSG("parse_response() Invalid response format: ~p~n~p~n",[Res,Err])
 	end.
 
 method_has_data(Request,ResHdr) ->

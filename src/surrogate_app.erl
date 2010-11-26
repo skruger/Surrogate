@@ -34,6 +34,7 @@ run() ->
 	appmon:start(),
 	application:start(mnesia),
 	application:start(crypto),
+	application:start(public_key),
 	application:start(ssl),
 	application:load(surrogate),
 	application:start(surrogate).

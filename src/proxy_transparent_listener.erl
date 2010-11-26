@@ -67,7 +67,7 @@ do_accept(Parent,Listen) ->
 %% --------------------------------------------------------------------
 handle_call(Request, _From, State) ->
     Reply = ok,
-	io:format("~p: Unknown call: ~p~n",[?MODULE,Request]),
+	?DEBUG_MSG("~p: Unknown call: ~p~n",[?MODULE,Request]),
     {reply, Reply, State}.
 
 %% --------------------------------------------------------------------
@@ -78,7 +78,7 @@ handle_call(Request, _From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_cast(handle_request,State)->
-	io:format("~p got all headers, processing request:~n~p~n~p~nrecv_buff:~n~p~n",[?MODULE,State#state.request,State#state.headers,State#state.recv_buff]),
+	?DEBUG_MSG("Got all headers, processing request:~n~p~n~p~nrecv_buff:~n~p~n",[State#state.request,State#state.headers,State#state.recv_buff]),
 	{ok,Pid} = proxy_pass:start(#proxy_pass{request=State#state.request,headers=State#state.headers,recv_buff=State#state.recv_buff}),
 	Sock = State#state.sock,
 %% 	io:format("Sock: ~p~n",[Sock]),
@@ -101,12 +101,12 @@ handle_cast({accept,{error,timeout}},State) ->
 	gen_server:cast((State#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
 	{stop,normal,State};
 handle_cast({accept,Other},State) ->
-	io:format("Error in accept: ~p~n",[Other]),
+	?ERROR_MSG("Error in accept: ~p~n",[Other]),
 	gen_server:cast((State#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
 	{stop,normal,State};
 
 handle_cast(Msg, State) ->
-	io:format("~p: Unknown cast: ~p~n",[?MODULE,Msg]),
+	?DEBUG_MSG("~p: Unknown cast: ~p~n",[?MODULE,Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -117,7 +117,7 @@ handle_cast(Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(Info, State) ->
-	io:format("~p: Unknown info: ~p~n",[?MODULE,Info]),
+	?DEBUG_MSG("~p: Unknown info: ~p~n",[?MODULE,Info]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

@@ -11,6 +11,8 @@
 %% Include files
 %% --------------------------------------------------------------------
 
+-include("surrogate.hrl").
+
 %% --------------------------------------------------------------------
 %% External exports
 -export([start_link/1]).
@@ -31,7 +33,7 @@ start_link(Config) ->
 		{ok,Terms} ->
 			gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
 		Err ->
-			io:format("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
+			?DEBUG_MSG("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
 			Err
 	end.
 
@@ -54,7 +56,7 @@ reload() ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init(State) ->
-	io:format("~p init with ~p~n",[?MODULE,State]),
+	?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),
     {ok, State#state{}}.
 
 %% --------------------------------------------------------------------

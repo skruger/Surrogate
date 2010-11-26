@@ -46,13 +46,13 @@ start_link(Args) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 init({balance_http,Bind,Port,Props}=L) ->
-	io:format("~p HTTP listening: ~p~n",[?MODULE,L]),
+	?INFO_MSG("~p HTTP listening: ~p~n",[?MODULE,L]),
 	case gen_tcp:listen(Port,[Bind,inet,binary,{active,true},{reuseaddr,true}]) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
 			{ok, listen_master, #socket_state{type=http,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
-			io:format("~p could not start with args ~p~nError: ~p~n",[?MODULE,L,Err]),
+			?ERROR_MSG("~p could not start with args ~p~nError: ~p~n",[?MODULE,L,Err]),
 			{stop,error}
 	end;
 init({http,Listen,Port,Props,Parent}=_L) ->
@@ -60,7 +60,7 @@ init({http,Listen,Port,Props,Parent}=_L) ->
 	gen_fsm:send_event(self(),wait),
 	{ok,accept_http,#worker_state{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
 init({balance_https,Bind,Port,KeyFile,CertFile,Props}=L)->
-	io:format("~p HTTPS listening: ~p~n",[?MODULE,L]),
+	?INFO_MSG("~p HTTPS listening: ~p~n",[?MODULE,L]),
 	%Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,inet,binary,{active,true},{reuseaddr,true}],
 	Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{reuseaddr,true}],
 	case ssl:listen(Port,Opts) of
@@ -68,7 +68,7 @@ init({balance_https,Bind,Port,KeyFile,CertFile,Props}=L)->
 			gen_fsm:send_event(self(),check_listeners),
 			{ok,listen_master,#socket_state{type=https,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
-			io:format("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err]),
+			?ERROR_MSG("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err]),
 			{stop,error}
 	end;
 init({https,Listen,Port,Props,Parent}=_L) ->
@@ -101,7 +101,7 @@ listen_master(startchild,State) ->
 %% 			?FQDEBUG("Started child ~p~n",[Pid]),
 			{next_state,listen_master,State#socket_state{listeners = [Pid|State#socket_state.listeners]}};
 		Err ->
-			io:format("Error starting child: ~p~n",[Err]),
+			?ERROR_MSG("Error starting child: ~p~n",[Err]),
 			{next_state,listen_master,State}
 	end;
 listen_master({child_accepted,Pid},State) ->
@@ -118,11 +118,11 @@ accept_http(wait,State) ->
 %% 			io:format("~p Accepted ~p~n",[?MODULE,Sock]),
 			{next_state,http_balance,State#worker_state{client_sock=Sock}};
 		{error,timeout} ->
-			io:format("~p: Accept timeout, retrying.~n",[?MODULE]),
+			?INFO_MSG("~p: Accept timeout, retrying.~n",[?MODULE]),
 			gen_fsm:send_event(self(),wait),
 			{next_state,accept,State};
 		Err ->
-			io:format("~p: Accept error: ~p~n",[?MODULE,Err]),
+			?ERROR_MSG("~p: Accept error: ~p~n",[?MODULE,Err]),
 			gen_server:cast({State#worker_state.parent_pid,self()}),
 			{stop,normal,State}
 	end.
@@ -148,15 +148,15 @@ accept_https({wait,ListenSock},State) ->
 					gen_fsm:send_event(self(),get_headers),
 					{next_state,https_balance,State#worker_state{client_sock=Sock}};
 				SSLErr ->
-					io:format("SSL Error: ~p~n",[SSLErr]),
+					?ERROR_MSG("SSL Error: ~p~n",[SSLErr]),
 					{stop,normal,State}
 			end;
 		{error,timeout} ->
-			io:format("~p: Accept timeout, retrying.~n",[?MODULE]),
+			?INFO_MSG("~p: Accept timeout, retrying.~n",[?MODULE]),
 			gen_fsm:send_event(self(),wait),
 			{next_state,accept,State};
 		Err ->
-			io:format("~p: Accept error: ~p~n",[?MODULE,Err]),
+			?ERROR_MSG("~p: Accept error: ~p~n",[?MODULE,Err]),
 			gen_server:cast({State#worker_state.parent_pid,self()}),
 			{stop,normal,State}
 	end.

@@ -11,6 +11,7 @@
 %% Include files
 %% --------------------------------------------------------------------
 
+-include("surrogate.hrl").
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
@@ -38,7 +39,7 @@
 %% ====================================================================
 
 start_link() ->
-	io:format("Starting ~p~n",[?MODULE]),
+	?DEBUG_MSG("Starting ~p~n",[?MODULE]),
 	supervisor:start_link({local,?MODULE},?MODULE,[]).
 
 
@@ -54,7 +55,7 @@ start_link() ->
 init(_) ->
 %% 	io:format("~p:init()~n",[?MODULE]),
 	Children = filter_childspecs(proxy_filters),
-	io:format("~p children:~n~p~n",[?MODULE,Children]),
+	?DEBUG_MSG("~p children:~n~p~n",[?MODULE,Children]),
     {ok,{{one_for_all,5,1}, Children}}.
 
 

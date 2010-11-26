@@ -2,9 +2,9 @@
 %%% Author  : skruger
 %%% Description :
 %%%
-%%% Created : Nov 5, 2010
+%%% Created : Nov 24, 2010
 %%% -------------------------------------------------------------------
--module(proxy_socks45).
+-module(surrogate_log).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
@@ -13,23 +13,30 @@
 
 -include("surrogate.hrl").
 
--define(LISTENERS, 2).
-
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/1]).
+-export([start_link/1,start_link/2,append/3,access/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {listener,num_listeners,listeners}).
+-record(state, {errorlog,accesslog}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
-start_link(PropList) ->
-	gen_server:start_link({local,?MODULE},?MODULE,[PropList],[]).
 
+start_link(LogFile) ->
+	gen_server:start_link({local,?MODULE},?MODULE,[LogFile],[]).
+start_link(ErrorLog,AccessLog) ->
+	gen_server:start_link({local,?MODULE},?MODULE,[ErrorLog,AccessLog],[]).
+
+
+append(Level,Mod,Message) ->
+	gen_server:cast(?MODULE,{log,Level,Mod,Message}).
+
+access(Code,Url,User,Extra) ->
+	gen_server:cast(?MODULE,{access_log,Code,Url,User,Extra}).
 
 %% ====================================================================
 %% Server functions
@@ -43,17 +50,26 @@ start_link(PropList) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([PropList]) ->
-   	?DEBUG_MSG("~p starting.~n",[?MODULE]),
-	Port = proplists:get_value(listen,PropList,1080),
-    case gen_tcp:listen(Port,[inet,binary,{active,true},{reuseaddr,true}]) of
-		{ok,ListenSock} ->
-			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self()},
-			gen_server:cast(self(),check_listeners),
-			{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[]}};
+init([FileName]) ->
+	case file:open(FileName,[write,append]) of
+		{ok,File} ->
+			{ok,#state{errorlog=File}};
 		Err ->
-			?CRITICAL("~p could not start listen(): ~p",[?MODULE,Err]),
-			{stop,error}
+			{stop,Err}
+	end;
+init([ErrorFile,AccessLog|_]) ->
+	case file:open(ErrorFile,[write,append]) of
+		{ok,File} ->
+			case file:open(AccessLog,[write,append]) of
+				{ok,Access} ->
+					{ok,#state{errorlog=File,accesslog=Access}};
+				Err ->
+					?CRITICAL("Could not open access log file: ~p.~n",[AccessLog]),
+					{stop,Err}
+			end;
+		Err ->
+			io:format("Could not open error log file: ~p.~n",[ErrorFile]),
+			{stop,Err}
 	end.
 
 
@@ -67,7 +83,6 @@ init([PropList]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -79,34 +94,17 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast(check_listeners,State)->
-	case lists:flatlength(State#state.listeners) of
-		Num when Num < State#state.num_listeners ->
-			gen_server:cast(self(),startchild);
-		_ ->
-			true
-	end,
+handle_cast({log,Level,Mod,Message},State) ->
+	Msg = lists:flatten(io_lib:format("===== ~s ~s =====~n~p~n~s~n",[log_level(Level),timestamp(),Mod,Message])),
+	file:write(State#state.errorlog,Msg),
 	{noreply,State};
-handle_cast(startchild,State) ->
-%% 	?FQDEBUG("Starting child...~n"),
-	gen_server:cast(self(),check_listeners),
-	case gen_fsm:start_link(proxy_socks45_listener,State#state.listener,[]) of
-		{ok,Pid} ->
-			erlang:monitor(process,Pid),
-			erlang:register(list_to_atom(lists:append("socks_",pid_to_list(Pid))),Pid),
-%% 			?FQDEBUG("Started child ~p~n",[Pid]),
-			{noreply,State#state{listeners = [Pid|State#state.listeners]}};
-		Err ->
-			?ERROR_MSG("Error starting child: ~p~n",[Err]),
-			{noreply,State}
-	end;
-handle_cast({child_accepted,Pid},State) ->
-	gen_server:cast(self(),check_listeners),
-	{noreply,State#state{listeners = lists:delete(Pid,State#state.listeners)}};
-
-handle_cast(Msg, State) ->
-	?DEBUG_MSG("~p recieved unknown cast: ~p~n",[?MODULE,Msg]),
+handle_cast({access_log,Code,Url,User,Extra},State) when State#state.accesslog /= undefined ->
+	Log = lists:flatten(io_lib:format("~s ~p ~s ~s - ~s~n",[timestamp(),Code,Url,format_extra(Extra),format_user(User)])),
+	file:write(State#state.accesslog,Log),
+	{noreply,State};
+handle_cast(_Msg, State) ->
     {noreply, State}.
+
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
 %% Description: Handling all non call/cast messages
@@ -114,11 +112,7 @@ handle_cast(Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_info({'DOWN',_,process,Pid,normal},State) ->
-	gen_server:cast(self(),{child_accepted,Pid}),
-	{noreply,State};
-handle_info(Info, State) ->
-	?DEBUG_MSG("~p recieved unknown info: ~p~n",[?MODULE,Info]),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -141,3 +135,37 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
+format_user(User) when is_record(User,proxy_userinfo) ->
+	"HTTP: "++User#proxy_userinfo.username;
+format_user({socks4_user,User}) ->
+	"SOCKS4: "++User;
+format_user({socks5_user,User}) when is_atom(User)->
+	"SOCKS5: "++lists:flatten(io_lib:format("~p",[User]));
+format_user({socks5_user,User}) when is_list(User)->
+	"SOCKS5: "++User;
+format_user(User) when is_list(User) ->
+	"Other: "++User;
+format_user(User) ->
+	?ERROR_MSG("Invalid user information passed to format_user(): ~p~n",[User]),
+	"Bad user info see error log".
+
+format_extra(Extra) when is_list(Extra) ->
+	Extra;
+format_extra(Extra) ->
+	lists:flatten(io_lib:format("~p",[Extra])).
+
+timestamp() ->
+	httpd_util:rfc1123_date(calendar:now_to_local_time(now())).
+
+log_level(0) ->
+	"CRITICAL";
+log_level(1) ->
+	"ERROR";
+log_level(2) ->
+	"WARNING";
+log_level(3) ->
+	"INFO";
+log_level(4) ->
+	"DEBUG";
+log_level(5) ->
+	"DEBUG+".

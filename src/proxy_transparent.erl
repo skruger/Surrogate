@@ -44,7 +44,7 @@ start_link(PropList) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([PropList]) ->
-	io:format("~p starting.~n~p~n",[?MODULE,PropList]),
+	?INFO_MSG("~p starting.~n~p~n",[?MODULE,PropList]),
 	Port = proplists:get_value(listen,PropList,3128),
     case gen_tcp:listen(Port,[inet,binary,{active,true},{reuseaddr,true}]) of
 		{ok,ListenSock} ->
@@ -52,7 +52,7 @@ init([PropList]) ->
 			gen_server:cast(self(),check_listeners),
 			{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[],config_proplist=PropList}};
 		Err ->
-			io:format("~p could not start: ~p",[?MODULE,Err]),
+			?ERROR_MSG("~p could not start: ~p",[?MODULE,Err]),
 			{stop,error}
 	end.
 
@@ -96,7 +96,7 @@ handle_cast(startchild,State) ->
 %% 			?FQDEBUG("Started child ~p~n",[Pid]),
 			{noreply,State#state{listeners = [Pid|State#state.listeners]}};
 		Err ->
-			io:format("Error starting child: ~p~n",[Err]),
+			?ERROR_MSG("Error starting child: ~p~n",[Err]),
 			{noreply,State}
 	end;
 handle_cast({child_accepted,Pid},State) ->
@@ -104,7 +104,7 @@ handle_cast({child_accepted,Pid},State) ->
 	{noreply,State#state{listeners = lists:delete(Pid,State#state.listeners)}};
 
 handle_cast(Msg, State) ->
-	io:format("~p recieved unknown cast: ~p~n",[?MODULE,Msg]),
+	?DEBUG_MSG("~p recieved unknown cast: ~p~n",[?MODULE,Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -117,7 +117,7 @@ handle_cast(Msg, State) ->
 handle_info({'DOWN',_,process,_,normal},State) ->
 	{noreply,State};
 handle_info(Info, State) ->
-	io:format("~p recieved unknown info: ~p~n",[?MODULE,Info]),
+	?DEBUG_MSG("~p recieved unknown info: ~p~n",[?MODULE,Info]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -126,7 +126,7 @@ handle_info(Info, State) ->
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
 terminate(Reason, _State) ->
-	io:format("~p stopping: ~p~n",[?MODULE,Reason]),
+	?DEBUG_MSG("~p stopping: ~p~n",[?MODULE,Reason]),
     ok.
 
 %% --------------------------------------------------------------------

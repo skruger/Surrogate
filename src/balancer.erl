@@ -10,7 +10,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
-
+-include("surrogate.hrl").
 %% --------------------------------------------------------------------
 %% External exports
 -export([start_pool/2,next/1,stop/1,state/1]).
@@ -57,7 +57,7 @@ state(Pool) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([PoolMembers,Mode]) ->
-	io:format("members: ~p~n",[PoolMembers]),
+	?INFO_MSG("members: ~p~n",[PoolMembers]),
     {ok, #state{mode=Mode,hostlist=PoolMembers,lasthost=0,host_count=length(PoolMembers)}}.
 
 %% --------------------------------------------------------------------

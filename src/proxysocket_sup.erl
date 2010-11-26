@@ -10,7 +10,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
-
+-include("surrogate.hrl").
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
@@ -37,7 +37,7 @@
 %% ====================================================================
 
 start_link(Args) ->
-	io:format("Starting ~p~n",[?MODULE]),
+	?DEBUG_MSG("Starting ~p~n",[?MODULE]),
 	supervisor:start_link({local,?MODULE},?MODULE,Args).
 
 
@@ -52,7 +52,7 @@ start_link(Args) ->
 %% --------------------------------------------------------------------
 init(ConfName) ->
 	CSpecs = proxy_childspecs(ConfName),
-    io:format("~p supervisor init using config name: ~p.~n~p~n",[?MODULE,ConfName,CSpecs]),
+    ?DEBUG_MSG("~p supervisor init using config name: ~p.~n~p~n",[?MODULE,ConfName,CSpecs]),
 	{ok,{{one_for_one,15,5}, 
 		 CSpecs
 		 }}.
