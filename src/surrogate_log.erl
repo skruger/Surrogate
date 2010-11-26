@@ -15,17 +15,19 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/1,start_link/2,append/3,access/4]).
+-export([start_link/0,start_link/1,start_link/2,append/3,access/4,log_level/1,get_accesslog/0,get_errorlog/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {errorlog,accesslog}).
+-record(state, {errorlog,accesslog,log_level}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
 
+start_link() ->
+	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
 start_link(LogFile) ->
 	gen_server:start_link({local,?MODULE},?MODULE,[LogFile],[]).
 start_link(ErrorLog,AccessLog) ->
@@ -37,6 +39,24 @@ append(Level,Mod,Message) ->
 
 access(Code,Url,User,Extra) ->
 	gen_server:cast(?MODULE,{access_log,Code,Url,User,Extra}).
+
+log_level(Lvl) ->
+	gen_server:cast(?MODULE,{log_level,Lvl}).
+
+get_accesslog() ->
+	case init:get_argument(accesslog) of
+		{ok,[[AccessLog|_]|_]} ->
+			string:strip(AccessLog,both,$");
+		_ ->
+			none
+	end.
+get_errorlog() ->
+	case init:get_argument(errorlog) of
+		{ok,[[ErrorLog|_]|_]} ->
+			string:strip(ErrorLog,both,$");
+		_ ->
+			none
+	end.
 
 %% ====================================================================
 %% Server functions
@@ -50,10 +70,35 @@ access(Code,Url,User,Extra) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
+init([]) ->
+	ErrLog = case get_errorlog() of
+				 none ->
+					 undefined;
+				 EFileName ->
+					 case file:open(EFileName,[write,append]) of
+						 {ok,EFile} ->
+							 EFile;
+						 EErr ->
+							 error_logger:error_msg("Could not open error log file ~p (~p)~n",[EFileName,EErr]),
+							 undefined
+					 end
+			 end,
+	AccessLog = case get_accesslog() of
+					none -> undefined;
+					AFileName ->
+						case file:open(AFileName,[write,append]) of
+							{ok,AFile} ->
+								AFile;
+							AErr ->
+								error_logger:error_msg("Could not open access log file ~p (~p)~n",[AFileName,AErr]),
+								undefined
+						end
+				end,
+	{ok,#state{errorlog=ErrLog,accesslog=AccessLog,log_level=5}};
 init([FileName]) ->
 	case file:open(FileName,[write,append]) of
 		{ok,File} ->
-			{ok,#state{errorlog=File}};
+			{ok,#state{errorlog=File,log_level=5}};
 		Err ->
 			{stop,Err}
 	end;
@@ -62,13 +107,13 @@ init([ErrorFile,AccessLog|_]) ->
 		{ok,File} ->
 			case file:open(AccessLog,[write,append]) of
 				{ok,Access} ->
-					{ok,#state{errorlog=File,accesslog=Access}};
+					{ok,#state{errorlog=File,accesslog=Access,log_level=5}};
 				Err ->
-					?CRITICAL("Could not open access log file: ~p.~n",[AccessLog]),
-					{stop,Err}
+					?CRITICAL("Could not open access log file: ~p.~n~p~n",[AccessLog,Err]),
+					{ok,#state{errorlog=File,log_level=5}}
 			end;
 		Err ->
-			io:format("Could not open error log file: ~p.~n",[ErrorFile]),
+			error_logger:error_msg("Could not open error log file: ~p.~n",[ErrorFile]),
 			{stop,Err}
 	end.
 
@@ -94,14 +139,17 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({log,Level,Mod,Message},State) ->
-	Msg = lists:flatten(io_lib:format("===== ~s ~s =====~n~p~n~s~n",[log_level(Level),timestamp(),Mod,Message])),
+handle_cast({log,Level,Mod,Message},State) when (State#state.log_level >= Level) and (State#state.errorlog /= undefined) ->
+	Msg = lists:flatten(io_lib:format("===== ~s ~s =====~n~p~n~s~n",[log_level_text(Level),timestamp(),Mod,Message])),
 	file:write(State#state.errorlog,Msg),
 	{noreply,State};
 handle_cast({access_log,Code,Url,User,Extra},State) when State#state.accesslog /= undefined ->
 	Log = lists:flatten(io_lib:format("~s ~p ~s ~s - ~s~n",[timestamp(),Code,Url,format_extra(Extra),format_user(User)])),
 	file:write(State#state.accesslog,Log),
 	{noreply,State};
+handle_cast({log_level,Lvl},State) ->
+	?CRITICAL("Setting log level to ~p",[Lvl]),
+	{noreply,State#state{log_level=Lvl}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -157,15 +205,15 @@ format_extra(Extra) ->
 timestamp() ->
 	httpd_util:rfc1123_date(calendar:now_to_local_time(now())).
 
-log_level(0) ->
+log_level_text(0) ->
 	"CRITICAL";
-log_level(1) ->
+log_level_text(1) ->
 	"ERROR";
-log_level(2) ->
+log_level_text(2) ->
 	"WARNING";
-log_level(3) ->
+log_level_text(3) ->
 	"INFO";
-log_level(4) ->
+log_level_text(4) ->
 	"DEBUG";
-log_level(5) ->
+log_level_text(5) ->
 	"DEBUG+".

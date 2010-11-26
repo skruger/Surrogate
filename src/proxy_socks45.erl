@@ -13,7 +13,7 @@
 
 -include("surrogate.hrl").
 
--define(LISTENERS, 2).
+-define(LISTENERS, 1).
 
 %% --------------------------------------------------------------------
 %% External exports

@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/1]).
+-export([start_link/1,start_link/0,get_proxyconfig/0]).
 
 -export([reload/0,get/2]).
 
@@ -28,12 +28,15 @@
 %% External functions
 %% ====================================================================
 
+start_link() ->
+	start_link(get_proxyconfig()).
+
 start_link(Config) ->
 	case file:consult(Config) of
 		{ok,Terms} ->
 			gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
 		Err ->
-			?DEBUG_MSG("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
+			?CRITICAL("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
 			Err
 	end.
 
@@ -42,6 +45,14 @@ get(Prop,Def) ->
 
 reload() ->
 	gen_server:cast(?MODULE,reload).
+
+get_proxyconfig() ->
+	case init:get_argument(proxyconfig) of
+		{ok,[[Cfg|_]|_]} ->
+			string:strip(Cfg,both,$");
+		_ ->
+			none
+	end.
 
 %% ====================================================================
 %% Server functions
@@ -56,8 +67,10 @@ reload() ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init(State) ->
-	?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),
-    {ok, State#state{}}.
+	LogLevel = proplists:get_value(log_level,State#state.config_terms,5),
+	surrogate_log:log_level(LogLevel),
+    ?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),
+	{ok, State#state{}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3

@@ -32,6 +32,7 @@
 %% --------------------------------------------------------------------
 run() ->
 	appmon:start(),
+	application:start(sasl),
 	application:start(mnesia),
 	application:start(crypto),
 	application:start(public_key),
@@ -49,13 +50,13 @@ run() ->
 %%          {error, Reason}
 %% --------------------------------------------------------------------
 start(_Type, StartArgs) ->
-	io:format("~p starting.~n",[?MODULE]),
+	error_logger:info_msg("~p starting.~n",[?MODULE]),
     case surrogate_sup:start_link(StartArgs) of
 	{ok, Pid} ->
-		io:format("~p supervisor started: ~p~n",[?MODULE,Pid]),
+		error_logger:info_msg("~p supervisor started: ~p~n",[?MODULE,Pid]),
 	    {ok, Pid};
 	Error ->
-		io:format("~p Error: ~p~n",[?MODULE,Error]),
+		error_logger:error_msg("~p Error: ~p~n",[?MODULE,Error]),
 	    Error
     end.
 

@@ -52,13 +52,13 @@ start_link(Args) ->
 init([]) ->
 	{ok,{{one_for_one,5,1},
 		 [{surrogate_log,
-		   {surrogate_log,start_link,["Surrogate/surrogate.log","Surrogate/access.log"]},
+		   {surrogate_log,start_link,[]}, %%"Surrogate/surrogate.log","Surrogate/access.log"
 		   permanent,
 		   10000,
 		   worker,
 		   []},
 		  {proxyconf,
-		   {proxyconf,start_link,["Surrogate/conf/proxy.conf"]},
+		   {proxyconf,start_link,[]}, %% "Surrogate/conf/proxy.conf"
 		   permanent,
 		   10000,
 		   worker,

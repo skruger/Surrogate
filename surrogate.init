@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# chkconfig: 2345 90 10
+# description: Surrogate proxy service.
+
+
+CONFIG=/etc/surrogate/surrogate.conf
+SURROGATE_PATH=/usr/share/surrogate
+MNESIA=$SURROGATE_PATH/db
+PIDFILE=/var/run/surrogate.pid
+LOGPATH=/var/log/surrogate
+ERRORLOG=$LOGPATH/surrogate.log
+ACCESSLOG=$LOGPATH/access.log
+
+NODENAME=surrogate@`hostname`
+DBGNODENAME=debug$NODENAME
+
+export HOME=$SURROGATE_PATH
+
+cd $SURROGATE_PATH
+
+checkpid(){
+if [ -f $PIDFILE ]; then
+	PID=`cat $PIDFILE`
+	if ps $PID > /dev/null ; then
+#		echo "Service is already running as pid $PID"
+		return 1
+	else
+		rm $PIDFILE
+		return 0
+	fi
+fi
+return 0
+}
+
+debug(){
+if checkpid; then
+	echo "Unable to debug.  Surrogate not running"
+else
+	erl -name $DBGNODENAME -remsh $NODENAME
+fi
+}
+
+OPTS=-proxyconfig $CONFIG \
+		-mnesia dir "$MNESIA" \
+		-errorlog "$ERRORLOG" \
+		-accesslog "$ACCESSLOG"
+
+start(){
+if checkpid; then
+	echo -n "Starting Surrogate... "
+	erl -pa $SURROGATE_PATH/ebin/ -s surrogate_app run -config surrogate -detached -pidfile $PIDFILE -name $NODENAME $OPTS
+	echo "OK"
+	RETVAL=0
+else
+	echo "Surrogate already running"
+	RETVAL=1
+fi
+}
+
+stop(){
+if ! checkpid; then 
+	PID=`cat $PIDFILE`
+	echo -n "Stopping surrogate: $PID "
+	kill $PID
+	echo "OK"
+	RETVAL=0
+else
+	RETVAL=1
+fi
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		stop
+		start
+		;;
+	debug)
+cat << EOF
+Connecting to running instance of Surrogate.
+
+Use ctrl-c,ctrl-c to exit instead of halt.
+
+EOF
+		debug
+		;;
+	status)
+		if checkpid; then
+			echo "Stopped"
+		else
+			echo "Running ($PID)"
+		fi
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		;;
+esac
+
+
+exit $RETVAL
