@@ -118,7 +118,7 @@ proxy_auth({check_auth,AuthCfg},State) ->
 							{next_state,proxy_auth,State}
 					end
 			end;
-		Err ->
+		_Err ->
 %% 			io:format("No auth: ~p~n",[Err]),
 			gen_fsm:send_event(self(),send_challenge),
 			{next_state,proxy_auth,State}
