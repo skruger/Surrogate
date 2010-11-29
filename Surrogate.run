@@ -1,0 +1,13 @@
+
+For devel work as init script doesn't fully work yet...
+
+#First time before mnesia schema is created....
+erl -mnesia dir '"mnesia/"' -pa ebin/ -sname proxy01 -proxyconfig conf/proxy.conf -errorlog surrogate.log -accesslog access.log
+
+mnesia:create_schema([node()]).
+surrogate_app:run().
+
+#after that auto run surrogate_app:run() is cool.
+erl -mnesia dir '"mnesia/"' -pa ebin/ -s surrogate_app run -sname proxy01 -proxyconfig conf/proxy.conf -errorlog surrogate.log -accesslog access.log
+
+proxy_auth:add_user("test","password").

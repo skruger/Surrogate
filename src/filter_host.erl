@@ -153,14 +153,20 @@ handle_cast(load_deny_hosts,State) ->
 		none ->
 			ok;
 		FileName ->
+            ?INFO_MSG("load_deny_hosts from file: ~p~n", [FileName]),
 			case file:read_file(FileName) of
 				{ok,FileContents} ->
-					F = fun() ->
-								mnesia:clear_table(filter_host_list),
-								split_lines(binary_to_list(FileContents))
-						end,
-					Res = mnesia:transaction(F),
-					?INFO_MSG("load_deny_hosts: ~p~n",[Res]);
+                    try 
+                        F = fun() ->
+                                    mnesia:clear_table(filter_host_list),
+                                    split_lines(binary_to_list(FileContents))
+                            end,
+                        mnesia:transaction(F)
+                    of
+                        R -> ?INFO_MSG("load_deny_hosts: ~p~n",[R])
+                    catch
+                        throw:Other -> ?ERROR_MSG("load_deny_hosts Ex: ~p~n", [Other])
+                    end;
 				Error ->
 					?ERROR_MSG("~p could not open file: ~p (~p)~n",[?MODULE,FileName,Error])
 			end

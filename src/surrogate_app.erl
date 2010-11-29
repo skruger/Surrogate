@@ -34,6 +34,7 @@ run() ->
 	appmon:start(),
 	application:start(sasl),
 	application:start(mnesia),
+    create_tables:init_tables(),
 	application:start(crypto),
 	application:start(public_key),
 	application:start(ssl),
