@@ -158,11 +158,14 @@ handle_cast(load_deny_hosts,State) ->
 				{ok,FileContents} ->
                     try 
                         F = fun() ->
-                                    mnesia:clear_table(filter_host_list),
+									lists:foreach(fun(K) -> mnesia:delete({filter_host_list,K}) end,mnesia:all_keys(filter_host_list)),
+%%                                  mnesia:clear_table(filter_host_list),
                                     split_lines(binary_to_list(FileContents))
                             end,
                         mnesia:transaction(F)
                     of
+						{aborted,_Info} = Abort ->
+							?ERROR_MSG("load_deny_hosts aborted: ~p~n~p~n",[Abort,erlang:get_stacktrace()]);
                         R -> ?INFO_MSG("load_deny_hosts: ~p~n",[R])
                     catch
                         throw:Other -> ?ERROR_MSG("load_deny_hosts Ex: ~p~n", [Other])
