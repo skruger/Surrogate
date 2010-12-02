@@ -65,20 +65,8 @@ get_spec() ->
 init([]) ->
 	Pools = proxyconf:get(balance_pools,[]),
     Children = pool_children(Pools,[]),
-	Listen = proxyconf:get(listeners,[]),
-%% 	BChildren = balance_children(Listen,[]),
-%% 	Children = PChildren++BChildren,
-%% 	io:format("Staring ~p~n~p~n",[?MODULE,Children]),
 	{ok,{{one_for_all,0,1}, Children}}.
 
-balance_children([],C) ->
-	C;
-balance_children([B|R],C) ->
-%% 	Id = list_to_atom("balance_"++integer_to_list(length(C)+1)),
-	Spec = {B,{balance_http,start_link,[B]},
-			permanent,
-			2000, worker,[]},
-	balance_children(R,[Spec|C]).
 
 pool_children([],C) ->
 	C;

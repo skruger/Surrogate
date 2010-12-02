@@ -12,6 +12,7 @@
 %% --------------------------------------------------------------------
 
 -include("surrogate.hrl").
+-include("mysql.hrl").
 
 %% --------------------------------------------------------------------
 %% External exports
@@ -20,7 +21,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, {mode}).
 
 %% ====================================================================
 %% External functions
@@ -55,7 +56,8 @@ delete_user(User) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
-    {ok, #state{}}.
+	Mode = proxyconf:get(auth_mode,mnesia),
+    {ok, #state{mode=Mode}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -67,7 +69,7 @@ init([]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call(list_users,_From,State) ->
+handle_call(list_users,_From,State) when State#state.mode == mnesia ->
 %% 	Txn = fun() ->
 %%  				  MatchHead = #filter_url_list{host=Host,path='$1',rule='$2'},
 %% 				  mnesia:select(filter_url_list,[{MatchHead,[{'==','$1',Path}],['$2']}])
@@ -83,13 +85,13 @@ handle_call(list_users,_From,State) ->
 		Ret ->
 			{reply,{error,Ret},State}
 	end;
-handle_call({is_user,UserName},_From,State) ->
+handle_call({is_user,UserName},_From,State) when State#state.mode == mnesia ->
 	F = fun() ->
 				mnesia:read(proxy_userinfo,string:to_lower(UserName))
   		end,
 	Ret = mnesia:transaction(F),
 	{reply,Ret,State};
-handle_call({auth,User,Pass},_From,State) ->
+handle_call({auth,User,Pass},_From,State) when State#state.mode == mnesia ->
 	CPass = crypto:md5(Pass),
 	F = fun() ->
 				mnesia:read(proxy_userinfo,string:to_lower(User))
@@ -100,20 +102,55 @@ handle_call({auth,User,Pass},_From,State) ->
 		_ ->
 			{reply,false,State}
 	end;
-handle_call({add_user,User,Pass},_From,State) ->
+handle_call({add_user,User,Pass},_From,State) when State#state.mode == mnesia ->
 	F1 = fun() ->
 				 mnesia:write(#proxy_userinfo{username=string:to_lower(User),password=crypto:md5(Pass)})
 		 end,
 	Ret = mnesia:transaction(F1),
 	{reply,Ret,State};
-handle_call({delete_user,User},_From,State) ->
+handle_call({delete_user,User},_From,State) when State#state.mode == mnesia ->
 	F = fun() ->
 				mnesia:delete({proxy_userinfo,User})
 		end,
 	Ret = mnesia:transaction(F),
 	{reply,Ret,State};
-handle_call(_Request, _From, State) ->
-    Reply = ok,
+handle_call({auth,User0,Pass},_From,State) when State#state.mode == mysql ->
+	User = string:to_lower(User0),
+	case mysql:fetch(mysql,"select name from user_auth where name='"++User++"' and password=md5('"++Pass++"')") of
+		{data,#mysql_result{rows=[]}} ->
+			{reply,false,State};
+		{data,#mysql_result{rows=[[Name|_]|_]}} ->
+			{reply,{ok,#proxy_userinfo{username=binary_to_list(Name)}},State}
+	end;
+handle_call({add_user,User0,Pass},_From,State) when State#state.mode == mysql ->
+	User = string:to_lower(User0),
+	case mysql:fetch(mysql,"replace into user_auth (name,password) values ('"++User++"',md5('"++Pass++"'))") of
+		{updated,_} ->
+			{reply,ok,State};
+		Err ->
+			{reply,{error,Err},State}
+	end;
+handle_call({is_user,UserName},_From,State) when State#state.mode == mysql ->
+	User = string:to_lower(UserName),
+	case mysql:fetch(mysql,"select name from user_auth where name='"++User++"'") of
+		{data,#mysql_result{rows=[]}} ->
+			{reply,false,State};
+		{data,#mysql_result{rows=[[Name|_]|_]}} ->
+			{reply,{ok,#proxy_userinfo{username=binary_to_list(Name)}},State}
+	end;
+handle_call(list_users,_From,State) when State#state.mode == mysql ->
+	case mysql:fetch(mysql,"select name from user_auth order by name") of
+		{data,#mysql_result{rows=Names}} ->
+			N = lists:map(fun(X) ->
+								  [Y] = X,
+								  binary_to_list(Y) end,Names),
+			{reply,N,State};
+		Err ->
+			{reply,Err,State}
+	end;
+handle_call(Request, _From, State) ->
+	?ERROR_MSG("Invalid auth request for mode ~p~n~p~n",[State#state.mode,Request]),
+    Reply = {error,invalid},
     {reply, Reply, State}.
 
 %% --------------------------------------------------------------------

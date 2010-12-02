@@ -11,3 +11,8 @@ Copyright 2010 Shaun Kruger, FastInfra, LLC
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+   
+MySQL erlang driver (http://code.google.com/p/erlang-mysql-driver/) included for convenience.
+See copyright notice in src/mysql/COPYING.txt
+MySQL driver modified slightly to fix compiler warnings.

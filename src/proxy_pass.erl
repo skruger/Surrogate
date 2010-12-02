@@ -84,7 +84,8 @@ proxy_start({balance,Pool,Port,Sock}=_L,State) ->
 proxy_client_read(get_headers,State0) ->
 	ReqHdr = header_parse:get_headers(State0#proxy_pass.client_sock,request),
 	State = State0#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype},
-	case proxyconf:get(proxy_auth,false) of
+%% 	case proxyconf:get(proxy_auth,false) of
+	case proplists:get_value(proxy_auth,State#proxy_pass.config,false) of
 		false ->
 %% 			io:format("No auth.~n"),
 			gen_fsm:send_event(self(),start),

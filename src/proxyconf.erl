@@ -67,6 +67,21 @@ get_proxyconfig() ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init(State) ->
+	case proplists:get_value(mysql_conn,State#state.config_terms,false) of
+		{Host, Port, User, Password, Database} = MysqlConf ->
+			F = fun() ->
+						Spec = {mysql,{mysql,start_link,[mysql, Host, Port, User, Password, Database]},
+								permanent,2000,worker,[]},
+						case supervisor:start_child(surrogate_sup,Spec) of
+							{error,_} = SupErr ->
+								?CRITICAL("Error starting mysql with config: ~p~n~p~n",[MysqlConf,SupErr]);
+							_ -> ok
+						end
+				end,
+			spawn(F);
+		Err ->
+			?CRITICAL("Invalid {mysql_conn,{Host, Port, User, Password, Database}} configuration option.~n~p~n",[Err])
+	end,
 	LogLevel = proplists:get_value(log_level,State#state.config_terms,5),
 	surrogate_log:log_level(LogLevel),
     ?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),
