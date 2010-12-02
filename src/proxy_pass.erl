@@ -21,7 +21,7 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--export([proxy_start/2,proxy_auth/2,proxy_connect/2,client_send/2,server_recv/2,server_start_recv/2,proxy_error/2]).
+-export([proxy_start/2,proxy_client_read/2,proxy_auth/2,proxy_connect/2,client_send/2,server_recv/2,server_start_recv/2,proxy_error/2]).
 
 %% -define(LOG(N,P),lists:flatten(io_lib:format(~p)
 
@@ -55,19 +55,8 @@ init(Args) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 proxy_start({socket,CSock},State) ->
-	case proxyconf:get(proxy_auth,false) of
-		false ->
-%% 			io:format("No auth.~n"),
-			gen_fsm:send_event(self(),start),
-			{next_state,proxy_connect,State#proxy_pass{client_sock=CSock}};
-		_AuthCfg when State#proxy_pass.userinfo =/= undefined ->
-%% 			io:format("Already had auth: ~p~n",[State#proxy_pass.userinfo]),
-			gen_fsm:send_event(self(),start),
-			{next_state,proxy_connect,State#proxy_pass{client_sock=CSock}};
-		AuthCfg ->
-			gen_fsm:send_event(self(),{check_auth,AuthCfg}),
-			{next_state,proxy_auth,State#proxy_pass{client_sock=CSock}}
-	end;
+	gen_fsm:send_event(self(),get_headers),
+	{next_state,proxy_client_read,State#proxy_pass{client_sock=CSock}};
 proxy_start({reverse_proxy,CSock,{host,Host,Port}=_Addr}=_L,State) ->
 %% 	io:format("proxy_start() ~p~n",[L]),
 	case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],60000) of
@@ -90,6 +79,23 @@ proxy_start({balance,Pool,Port,Sock}=_L,State) ->
 			{next_state,proxy_start,State};
 		_ ->
 			{stop,normal,State}
+	end.
+
+proxy_client_read(get_headers,State0) ->
+	ReqHdr = header_parse:get_headers(State0#proxy_pass.client_sock,request),
+	State = State0#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype},
+	case proxyconf:get(proxy_auth,false) of
+		false ->
+%% 			io:format("No auth.~n"),
+			gen_fsm:send_event(self(),start),
+			{next_state,proxy_connect,State};
+		_AuthCfg when State#proxy_pass.userinfo =/= undefined ->
+%% 			io:format("Already had auth: ~p~n",[State#proxy_pass.userinfo]),
+			gen_fsm:send_event(self(),start),
+			{next_state,proxy_connect,State};
+		AuthCfg ->
+			gen_fsm:send_event(self(),{check_auth,AuthCfg}),
+			{next_state,proxy_auth,State}
 	end.
 
 proxy_auth({check_auth,AuthCfg},State) ->
@@ -208,8 +214,6 @@ client_send({request_body,Len},State) ->
 	end.
 
 server_start_recv(response,State) ->
-%% 	{ok,Parse} = header_parse:start_link(),
-%% 	SvrHeader = header_parse:receive_headers(Parse,State#proxy_pass.server_sock),
 	ResHdr = header_parse:get_headers(State#proxy_pass.server_sock,response),
 	case ResHdr#header_block.response of
 		#response_rec{code=RCode} ->

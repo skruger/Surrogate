@@ -43,12 +43,13 @@ start_link(PropList) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([PropList]) ->
-   	?DEBUG_MSG("~p starting.~n",[?MODULE]),
-	Port = proplists:get_value(listen,PropList,1080),
-    case gen_tcp:listen(Port,[inet,binary,{active,false},{reuseaddr,true}]) of
+
+init([{proxy_socks45,Bind,Port,PropList}=A]) ->
+   	?DEBUG_MSG("~p starting.~n~p~n",[?MODULE,A]),
+%% 	Port = proplists:get_value(listen,PropList,1080),
+    case gen_tcp:listen(Port,[Bind,inet,binary,{active,false},{reuseaddr,true}]) of
 		{ok,ListenSock} ->
-			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self()},
+			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self(),config=PropList},
 			gen_server:cast(self(),check_listeners),
 			{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[]}};
 		Err ->

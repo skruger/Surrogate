@@ -83,28 +83,9 @@ handle_call(Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-%% handle_cast(handle_request,State)->
-%% 	?DEBUG_MSG("Got all headers, processing request:~n~p~n~p~nrecv_buff:~n~p~n",[State#state.request,State#state.headers,State#state.recv_buff]),
-%% 	{ok,Pid} = proxy_pass:start(#proxy_pass{request=State#state.request,headers=State#state.headers,recv_buff=State#state.recv_buff}),
-%% 	Sock = State#state.sock,
-%% %% 	io:format("Sock: ~p~n",[Sock]),
-%% 	gen_tcp:controlling_process(Sock,Pid),
-%% 	gen_fsm:send_event(Pid,{socket,Sock}),
-%% 	{stop,normal,State};
 handle_cast({accept,{ok,Sock}},State) ->
 	gen_server:cast((State#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
-%% 	inet:setopts(Sock,[{active,true}]),
-%% 	{ok,Parse} = header_parse:start_link(),
-%% 	ProxyPass = header_parse:receive_headers(Parse,Sock),
-%% 	case proxylib:parse_request(ProxyPass#proxy_pass.request) of
-%% 		Req ->
-%% 			{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{proxy_type=Req#request_rec.proxytype}),
-%% 			gen_socket:controlling_process(Sock,Pid),
-%% 			gen_fsm:send_event(Pid,{socket,Sock}),
-%% 			{stop,normal,State}
-%% 	end;
-	ReqHdr = header_parse:get_headers(Sock,request),
-	{ok,Pid} = proxy_pass:start(#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype}),
+	{ok,Pid} = proxy_pass:start(#proxy_pass{config=(State#state.listen_args)#proxy_listener.config}),
 	gen_socket:controlling_process(Sock,Pid),
 	gen_fsm:send_event(Pid,{socket,Sock}),
 	{stop,normal,State};

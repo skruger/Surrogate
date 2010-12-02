@@ -64,10 +64,10 @@ get_spec() ->
 %% --------------------------------------------------------------------
 init([]) ->
 	Pools = proxyconf:get(balance_pools,[]),
-    PChildren = pool_children(Pools,[]),
+    Children = pool_children(Pools,[]),
 	Listen = proxyconf:get(listeners,[]),
-	BChildren = balance_children(Listen,[]),
-	Children = PChildren++BChildren,
+%% 	BChildren = balance_children(Listen,[]),
+%% 	Children = PChildren++BChildren,
 %% 	io:format("Staring ~p~n~p~n",[?MODULE,Children]),
 	{ok,{{one_for_all,0,1}, Children}}.
 

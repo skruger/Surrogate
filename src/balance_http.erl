@@ -128,9 +128,9 @@ accept_http(wait,State) ->
 	end.
 
 http_balance(get_headers,State) ->
-	{ok,Parse} = header_parse:start_link(),
 	Sock = State#worker_state.client_sock,
-	ProxyPass = header_parse:receive_headers(Parse,Sock),
+	ReqHdr = header_parse:get_headers(Sock,request),
+	ProxyPass = #proxy_pass{request=ReqHdr,proxy_type=ReqHdr#header_block.rstr},
 	{ok,Pid} = proxy_pass:start(ProxyPass),
 	gen_socket:controlling_process(Sock,Pid),
 	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),

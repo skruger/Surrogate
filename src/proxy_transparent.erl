@@ -22,7 +22,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {listener,num_listeners,listeners,config_proplist}).
+-record(state, {listener,num_listeners,listeners}).
 
 %% ====================================================================
 %% External functions
@@ -43,14 +43,14 @@ start_link(PropList) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([PropList]) ->
-	?INFO_MSG("~p starting.~n~p~n",[?MODULE,PropList]),
-	Port = proplists:get_value(listen,PropList,3128),
-    case gen_tcp:listen(Port,[inet,binary,{active,false},{reuseaddr,true}]) of
+init([{proxy_transparent,BindAddr,Port,PropList}=A]) ->
+	?INFO_MSG("~p starting.~n~p~n",[?MODULE,A]),
+%% 	Port = proplists:get_value(listen,PropList,3128),
+    case gen_tcp:listen(Port,[BindAddr,inet,binary,{active,false},{reuseaddr,true}]) of
 		{ok,ListenSock} ->
-			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self()},
+			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self(),config=PropList},
 			gen_server:cast(self(),check_listeners),
-			{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[],config_proplist=PropList}};
+			{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[]}};
 		Err ->
 			?ERROR_MSG("~p could not start: ~p",[?MODULE,Err]),
 			{stop,error}
@@ -89,10 +89,10 @@ handle_cast(check_listeners,State)->
 handle_cast(startchild,State) ->
 %% 	?FQDEBUG("Starting child...~n"),
 	gen_server:cast(self(),check_listeners),
-	case gen_server:start_link(proxy_transparent_listener,State#state.listener,[]) of
+	case gen_server:start(proxy_transparent_listener,State#state.listener,[]) of
 		{ok,Pid} ->
 			erlang:monitor(process,Pid),
-			erlang:register(list_to_atom(lists:append("http_",pid_to_list(Pid))),Pid),
+%% 			erlang:register(list_to_atom(lists:append("http_",pid_to_list(Pid))),Pid),
 %% 			?FQDEBUG("Started child ~p~n",[Pid]),
 			{noreply,State#state{listeners = [Pid|State#state.listeners]}};
 		Err ->
@@ -114,8 +114,9 @@ handle_cast(Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_info({'DOWN',_,process,_,normal},State) ->
-	{noreply,State};
+handle_info({'DOWN',_,process,Pid,normal},State) ->
+	gen_server:cast(self(),check_listeners),
+	{noreply,State#state{listeners = lists:delete(Pid,State#state.listeners)}};
 handle_info(Info, State) ->
 	?DEBUG_MSG("~p recieved unknown info: ~p~n",[?MODULE,Info]),
     {noreply, State}.
