@@ -27,14 +27,14 @@
 %% ====================================================================
 
 http_connect(ProxyPass) ->
-	FList = proplists:get_value(proxy_filters,ProxyPass#proxy_pass.config,[]),
 	{ok,Host,Port} = proxylib:parse_connect((ProxyPass#proxy_pass.request)#header_block.rstr),
+	FList = proplists:get_value(proxy_filters,ProxyPass#proxy_pass.config,[]),
 	case filter_check:host(FList,Host,ProxyPass#proxy_pass.userinfo) of
 		deny ->
 			EMsg = io_lib:format("Deny by rule for host: ~p~nHdr: ~p~n",[Host,(ProxyPass#proxy_pass.request)#header_block.headers]),
 			gen_fsm:send_event(self(),{error,403,"Forbidden",lists:flatten(EMsg)}),
 			{error,filter_block};
-		Ok ->
+		_Ok ->
 			case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
 				{ok,SvrSock0} ->
 					{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
