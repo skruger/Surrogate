@@ -52,7 +52,7 @@ recv(Sock,Length) ->
 	recv(Sock,Length,infinity).
 
 recv({?MODULE,Sock},Length,Timeout) ->
-	gen_server:call(Sock,{recv,Length,Timeout}).
+	gen_server:call(Sock,{recv,Length,Timeout},Timeout).
 
 close({?MODULE,Sock}) ->
 	gen_server:call(Sock,{close}).

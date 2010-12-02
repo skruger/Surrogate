@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([receive_headers/2,start_link/0]).
+-export([start_link/0,get_headers/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -26,9 +26,40 @@
 %% External functions
 %% ====================================================================
 
-receive_headers(Pid,Sock) ->
-	gen_socket:controlling_process(Sock,Pid),
-	gen_server:call(Pid,{receive_headers,Sock,self()},600000).
+%% receive_headers(Pid,Sock) ->
+%% 	gen_socket:controlling_process(Sock,Pid),
+%% 	gen_server:call(Pid,{receive_headers,Sock,self()},600000).
+
+get_headers(Sock,Type) ->
+	read_header_block(<<>>,Sock,Type).
+
+read_header_block(<<HdrData/binary>>,Sock,Type) ->
+	case proxylib:find_binary_pattern(<<HdrData/binary>>,<<"\r\n\r\n">>) of
+		nomatch ->
+			case gen_socket:recv(Sock,0) of
+				{ok,<<Dat/binary>>} ->
+					read_header_block(<<HdrData/binary,Dat/binary>>,Sock,Type);
+				Err ->
+					
+					throw(Err)
+			end;
+		Idx ->
+			<<Hdr:Idx/binary,"\r\n\r\n",Body/binary>> = HdrData,
+			{ok,Request,HdrList} = proxylib:split_headers(binary_to_list(Hdr)),
+			case Type of
+				request ->
+					Req = proxylib:parse_request(Request),
+					#header_block{headers=HdrList,body=Body,request=Req,rstr=Request};
+				response ->
+					Res = proxylib:parse_response(Request),
+					#header_block{headers=HdrList,body=Body,response=Res,rstr=Request};
+				BadType ->
+					?ERROR_MSG("get_headers() failed with invalid type: ~p~n",[BadType]),
+					throw(nomatch)
+			end
+	end.
+			
+			
 
 %% ====================================================================
 %% Server functions
@@ -75,22 +106,22 @@ handle_call({receive_headers,_Sock},_From,State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast(parse_headers,State) ->
-%% 	io:format("~p recv_buff: ~p~n",[?MODULE,State#state.recv_buff]),
-	case proxylib:find_binary_pattern(State#state.recv_buff,<<"\r\n\r\n">>) of
-		nomatch ->
-			gen_socket:setopts(State#state.sock,[{active,once}]),
-			{noreply,State};
-		Idx ->
-			<<Hdr:Idx/binary,"\r\n\r\n",Body/binary>> = State#state.recv_buff,
-%% 			?DEBUG_MSG("Header: ~p~n",[Hdr]),
-			{ok,Request,HdrList} = proxylib:split_headers(binary_to_list(Hdr)),
-			gen_socket:controlling_process(State#state.sock,State#state.sock_owner),
-			Re = #proxy_pass{headers=HdrList,recv_buff=Body,request=Request,sock_closed=State#state.sock_closed},
-			gen_server:reply(State#state.requestor,Re),
-			gen_server:cast(self(),exit),
-			{noreply,State}
-	end;
+%% handle_cast(parse_headers,State) ->
+%% %% 	io:format("~p recv_buff: ~p~n",[?MODULE,State#state.recv_buff]),
+%% 	case proxylib:find_binary_pattern(State#state.recv_buff,<<"\r\n\r\n">>) of
+%% 		nomatch ->
+%% 			gen_socket:setopts(State#state.sock,[{active,once}]),
+%% 			{noreply,State};
+%% 		Idx ->
+%% 			<<Hdr:Idx/binary,"\r\n\r\n",Body/binary>> = State#state.recv_buff,
+%% %% 			?DEBUG_MSG("Header: ~p~n",[Hdr]),
+%% 			{ok,Request,HdrList} = proxylib:split_headers(binary_to_list(Hdr)),
+%% 			gen_socket:controlling_process(State#state.sock,State#state.sock_owner),
+%% 			Re = #proxy_pass{headers=HdrList,recv_buff=Body,request=Request,sock_closed=State#state.sock_closed},
+%% 			gen_server:reply(State#state.requestor,Re),
+%% 			gen_server:cast(self(),exit),
+%% 			{noreply,State}
+%% 	end;
 handle_cast(exit,State) ->
 	{stop,normal,State}.
 

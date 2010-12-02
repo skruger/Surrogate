@@ -123,12 +123,13 @@ parse_response(Res) ->
 			?INFO_MSG("parse_response() Invalid response format: ~p~n~p~n",[Res,Err])
 	end.
 
-method_has_data(Request,ResHdr) ->
-	case parse_request(Request) of
+method_has_data(Req,Res) ->
+	case Req#header_block.request of
 		#request_rec{method="HEAD"} ->
 			false;
 		_ ->
-			case parse_response(ResHdr#proxy_pass.request) of
+%% 			?DEBUG_MSG("method_has_data(): Res=~p~n",[Res]),
+			case Res#header_block.response of
 				#response_rec{code=204} ->
 					false;
 				#response_rec{code=304} ->
@@ -139,6 +140,22 @@ method_has_data(Request,ResHdr) ->
 					true
 			end
 	end.
+%% method_has_data(Request,ResHdr) ->
+%% 	case parse_request(Request) of
+%% 		#request_rec{method="HEAD"} ->
+%% 			false;
+%% 		_ ->
+%% 			case parse_response(ResHdr#proxy_pass.request) of
+%% 				#response_rec{code=204} ->
+%% 					false;
+%% 				#response_rec{code=304} ->
+%% 					false;
+%% 				#response_rec{code=Code} when (Code < 200) and (Code > 99) ->
+%% 					flase;
+%% 				_ ->
+%% 					true
+%% 			end
+%% 	end.
 
 find_binary_pattern(Subject,Pat) ->
 	find_binary_pattern(Subject,Pat,0).

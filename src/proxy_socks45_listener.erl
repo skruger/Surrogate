@@ -187,15 +187,12 @@ socks4_request({request,Req},State) ->
 
 http_proxy({connect,Ver},State) ->
 	Sock = State#state.client_sock,
-%% 	io:format("Connect SOCKS ~p to http through filter.~n",[Ver]),
-	{ok,Parse} = header_parse:start_link(),
-	ProxyPass = header_parse:receive_headers(Parse,Sock),
-	{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{userinfo=State#state.userinfo}),
-	case proxylib:parse_request(ProxyPass#proxy_pass.request) of
+	ReqHdr = header_parse:get_headers(Sock,request),
+%% 	?INFO_MSG("Reqhdr: ~p~n",[ReqHdr]),
+	{ok,Pid} = proxy_pass:start(#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype}),
+	case ReqHdr#header_block.request of
 		#request_rec{method="CONNECT"} ->
-			proxy_connect:http_connect(ProxyPass#proxy_pass{client_sock=Sock,proxy_type={socks,Ver}}),
-%% 			gen_socket:close(Sock),
-			?DEBUG_MSG("Request: ~p~n",[ProxyPass#proxy_pass.request]),
+			proxy_connect:http_connect(#proxy_pass{client_sock=Sock,proxy_type={socks,Ver},request=ReqHdr}),
 			{stop,normal,State};
 		_ ->
 			gen_socket:controlling_process(Sock,Pid),

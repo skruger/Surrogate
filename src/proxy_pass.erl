@@ -73,7 +73,7 @@ proxy_start({reverse_proxy,CSock,{host,Host,Port}=_Addr}=_L,State) ->
 	case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],60000) of
 		{ok,SSock0} ->
 			{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-			gen_fsm:send_event(self(),{headers,State#proxy_pass.headers}),
+			gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
 			{next_state,client_send,State#proxy_pass{client_sock=CSock,server_sock=SSock}};
 		Err ->
 			?INFO_MSG("reverse_proxy connect() error: ~p~n",[Err]),
@@ -94,7 +94,7 @@ proxy_start({balance,Pool,Port,Sock}=_L,State) ->
 
 proxy_auth({check_auth,AuthCfg},State) ->
 	?DEBUG_MSG("Check auth: ~p~n",[AuthCfg]),
-	Dict = proxylib:header2dict(State#proxy_pass.headers),
+	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 	case dict:find("proxy-authorization",Dict) of
 		{ok,"Basic "++AuthStr} ->
 			Auth2 = binary_to_list(base64:decode(AuthStr)),
@@ -132,12 +132,12 @@ proxy_auth(send_challenge,State) ->
 
 
 proxy_connect(start,State) ->
-	case proxylib:parse_request(State#proxy_pass.request) of
+	case (State#proxy_pass.request)#header_block.request of
 		#request_rec{method="CONNECT"} ->
 %% 			io:format("Post authentication CONNECT~n"),
 			case proxy_connect:http_connect(State) of
 				ok ->
-					?ACCESS_LOG(200,State#proxy_pass.request,State#proxy_pass.userinfo,"Connection Established"),
+					?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,"Connection Established"),
 					{stop,normal,State};
 				_ ->
 					%% send_event() should be done by proxy_connect:http_connect()
@@ -148,14 +148,14 @@ proxy_connect(start,State) ->
 			{next_state,proxy_connect,State}
 	end;
 proxy_connect(open_socket,State) ->
-	Dict = proxylib:header2dict(State#proxy_pass.headers),
+	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 	case dict:find("host",Dict) of
 		{ok,HostStr} ->
 			{host,Host,Port} = proxylib:parse_host(HostStr,80),
 			case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
 				{ok,SSock0} ->
 					{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-					gen_fsm:send_event(self(),{headers,State#proxy_pass.headers}),
+					gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
 					{next_state,client_send,State#proxy_pass{server_sock=SSock}};
 				
 				{error,ErrStat} = Err ->
@@ -174,10 +174,10 @@ proxy_connect(open_socket,State) ->
 
 client_send({headers,Hdr},State) ->
 	HBlock = proxylib:combine_headers(Hdr),
-	Req = proxylib:parse_request(State#proxy_pass.request),
+	Req = (State#proxy_pass.request)#header_block.request,
 	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,"HTTP/1.0",HBlock])),
 	gen_socket:send(State#proxy_pass.server_sock,RequestText),
-	Dict = proxylib:header2dict(State#proxy_pass.headers),
+	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 	case dict:find("content-length",Dict) of
 		{ok,Length} ->
 			{Len,_} = string:to_integer(Length),
@@ -190,10 +190,11 @@ client_send({headers,Hdr},State) ->
 client_send({request_body,Len},State) when Len < 1 ->
 	gen_fsm:send_event(self(),response),
 	{next_state,server_start_recv,State};
-client_send({request_body,Len},State) when State#proxy_pass.recv_buff /= <<>> ->
-	gen_socket:send(State#proxy_pass.server_sock,State#proxy_pass.recv_buff),
-	gen_fsm:send_event(self(),{request_body,Len-trunc(bit_size(State#proxy_pass.recv_buff)/8)}),
-	{next_state,client_send,State#proxy_pass{recv_buff = <<>>}};
+client_send({request_body,Len},State) when (State#proxy_pass.request)#header_block.body /= <<>> ->
+	gen_socket:send(State#proxy_pass.server_sock,(State#proxy_pass.request)#header_block.body),
+	gen_fsm:send_event(self(),{request_body,Len-trunc(bit_size((State#proxy_pass.request)#header_block.body)/8)}),
+	NewReq = (State#proxy_pass.request)#header_block{body = <<>>},
+	{next_state,client_send,State#proxy_pass{request =  NewReq} };
 client_send({request_body,Len},State) ->
  	case gen_socket:recv(State#proxy_pass.client_sock,0,500) of
 		{ok,Packet} ->
@@ -207,42 +208,40 @@ client_send({request_body,Len},State) ->
 	end.
 
 server_start_recv(response,State) ->
-	{ok,Parse} = header_parse:start_link(),
-	SvrHeader = header_parse:receive_headers(Parse,State#proxy_pass.server_sock),
-	case proxylib:parse_response(SvrHeader#proxy_pass.request) of
+%% 	{ok,Parse} = header_parse:start_link(),
+%% 	SvrHeader = header_parse:receive_headers(Parse,State#proxy_pass.server_sock),
+	ResHdr = header_parse:get_headers(State#proxy_pass.server_sock,response),
+	case ResHdr#header_block.response of
 		#response_rec{code=RCode} ->
-			?ACCESS_LOG(RCode,State#proxy_pass.request,State#proxy_pass.userinfo,SvrHeader#proxy_pass.request);
+			?ACCESS_LOG(RCode,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr);
 		_PErr ->
 			ok
 	end,
-	ResponseHeaders = [[SvrHeader#proxy_pass.request|"\r\n"]|proxylib:combine_headers(SvrHeader#proxy_pass.headers)],
+	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(ResHdr#header_block.headers)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
-	case proxylib:method_has_data(State#proxy_pass.request,SvrHeader) of
+	case proxylib:method_has_data(State#proxy_pass.request,ResHdr) of
 		true ->
-			Dict = proxylib:header2dict(SvrHeader#proxy_pass.headers),
+			Dict = proxylib:header2dict(ResHdr#header_block.headers),
 			case dict:find("content-length",Dict) of
 				{ok,Length} ->
 					{Len,_} = string:to_integer(Length),
 					if 
-						SvrHeader#proxy_pass.recv_buff /= <<>> ->
-%% 							io:format("Sending extra for response to: ~p~n",[State#proxy_pass.request]),
-							gen_socket:send(State#proxy_pass.client_sock,SvrHeader#proxy_pass.recv_buff),
-							gen_fsm:send_event(self(),{response,Len-trunc(bit_size(SvrHeader#proxy_pass.recv_buff)/8)});
+						ResHdr#header_block.body /= <<>> ->
+							gen_socket:send(State#proxy_pass.client_sock,ResHdr#header_block.body),
+							gen_fsm:send_event(self(),{response,Len-trunc(bit_size(ResHdr#header_block.body)/8)});
 						true ->
 							gen_fsm:send_event(self(),{response,Len})
-					end,
-					{next_state,server_recv,State};
+					end;
 				_Err ->
-%% 					io:format("No content-length header:~n~p~n~p~n~p~n",[State#proxy_pass.request,SvrHeader#proxy_pass.request,SvrHeader#proxy_pass.headers]),
+%% 					?DEBUG_MSG("No content-length header:~n~p~n~p~n~p~n",[(State#proxy_pass.request)#header_block.rstr,ResHdr#header_block.rstr,ResHdr#header_block.headers]),
 					gen_fsm:send_event(self(),response),
-					gen_socket:send(State#proxy_pass.client_sock,SvrHeader#proxy_pass.recv_buff),
-					{next_state,server_recv,State}
-				end;
+					gen_socket:send(State#proxy_pass.client_sock,ResHdr#header_block.body)
+			end;
 		false ->
 %% 			io:format("No content expected:~n~p~n~p~n",[State#proxy_pass.request,SvrHeader]),
-			gen_fsm:send_event(self(),{response,0}),
-			{next_state,server_recv,State}
-	end.
+			gen_fsm:send_event(self(),{response,0})
+	end,
+	{next_state,server_recv,State#proxy_pass{response=ResHdr}}.
 
 server_recv({response,Len},State) when Len < 1->
 %% 	?DEBUG_MSG("Response ended with Len=~p~n",[Len]),
@@ -268,7 +267,7 @@ server_recv({response,Len},State) ->
 %% The headers have already been recieved and the data should be flowing.  A gen_tcp:recv() timeout
 %% will kill the connection.  This is normal with HTTP/1.0 responses sending content of unknown length.
 server_recv(response,State) ->
-	case gen_socket:recv(State#proxy_pass.server_sock,0,5000) of
+	case catch gen_socket:recv(State#proxy_pass.server_sock,0,60000) of
 		{ok,Packet} ->
 			gen_socket:send(State#proxy_pass.client_sock,Packet),
 			gen_fsm:send_event(self(),response),
@@ -278,6 +277,10 @@ server_recv(response,State) ->
 			{stop,normal,State};
 		{error,Reason} ->
 			?DEBUG_MSG("Recv ended: ~p~n",[Reason]),
+			{stop,normal,State};
+		{'EXIT',Err} ->
+			?ERROR_MSG("server_recv(response): Error waiting for response in HTTP/1.0 mode.~n~p~n",[Err]),
+			gen_socket:close(State#proxy_pass.client_sock),
 			{stop,normal,State}
 	end.
 
@@ -293,7 +296,7 @@ proxy_error({error,Code,Desc},State) ->
 	ICode = integer_to_list(Code),
 	Err = "HTTP/1.0 "++ICode++" "++Desc++"\r\nContent-type: text/html\r\nConnection: close\r\n\r\n",
 	EResponse = lists:flatten(io_lib:format("~s<h3>~s - ~s</h3>",[Err,ICode,Desc])),
-	?ACCESS_LOG(Code,State#proxy_pass.request,State#proxy_pass.userinfo,Desc),
+	?ACCESS_LOG(Code,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,Desc),
 	gen_socket:send(State#proxy_pass.client_sock,EResponse),
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State}.
