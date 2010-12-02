@@ -124,7 +124,7 @@ proxy_auth({check_auth,AuthCfg},State) ->
 	end;
 proxy_auth(send_challenge,State) ->
 %% 	io:format("Sending auth challenge~n"),
-	AuthReq = "HTTP/1.1 407 Proxy Auth\r\nProxy-Authenticate: Basic realm=\"FastProxy2\"\r\n\r\n",
+	AuthReq = "HTTP/1.1 407 Proxy Auth\r\nProxy-Authenticate: Basic realm=\"FastProxy2\"\r\nConnection: close\r\n\r\n",
 	?ACCESS_LOG(407,State#proxy_pass.request,"nouser","Proxy authorization request."),
 	gen_socket:send(State#proxy_pass.client_sock,AuthReq),
 	gen_socket:close(State#proxy_pass.client_sock),
@@ -160,7 +160,7 @@ proxy_connect(open_socket,State) ->
 				
 				{error,ErrStat} = Err ->
 					?DEBUG_MSG("~p connect() error: ~p~n~p~n",[?MODULE,Err,HostStr]),
-					gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p",[ErrStat]))}),
+					gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p ~p",[HostStr,ErrStat]))}),
 					{next_state,proxy_error,State}
 			end;
 		_Err ->
@@ -291,10 +291,11 @@ proxy_error({error,Code},State) ->
 proxy_error({error,Code,Desc},State) ->
 	?DEBUG_MSG("Proxy error: ~p ~p~n",[Code,Desc]),
 	ICode = integer_to_list(Code),
-	Err = "HTTP/1.1 "++ICode++" "++Desc++"\r\n\r\n",
+	Err = "HTTP/1.0 "++ICode++" "++Desc++"\r\nContent-type: text/html\r\nConnection: close\r\n\r\n",
 	EResponse = lists:flatten(io_lib:format("~s<h3>~s - ~s</h3>",[Err,ICode,Desc])),
 	?ACCESS_LOG(Code,State#proxy_pass.request,State#proxy_pass.userinfo,Desc),
 	gen_socket:send(State#proxy_pass.client_sock,EResponse),
+	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State}.
 
 %% --------------------------------------------------------------------
