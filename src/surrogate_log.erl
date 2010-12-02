@@ -183,6 +183,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
+format_user(undefined) ->
+	"None: no user";
 format_user(User) when is_record(User,proxy_userinfo) ->
 	"HTTP: "++User#proxy_userinfo.username;
 format_user({socks4_user,User}) ->

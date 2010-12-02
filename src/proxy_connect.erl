@@ -29,12 +29,13 @@
 http_connect(ProxyPass) ->
 	{ok,Host,Port} = proxylib:parse_connect(ProxyPass#proxy_pass.request),
 	case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
-		{ok,SvrSock} ->
+		{ok,SvrSock0} ->
+			{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
 			ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
 			ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
-			gen_tcp:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
-			gen_tcp:controlling_process(SvrSock,ServerPid),
-			gen_tcp:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
+			gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
+			gen_socket:controlling_process(SvrSock,ServerPid),
+			gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
 			ServerPid ! {client,ClientPid},
 			ClientPid ! {server,ServerPid},
 			ok;
@@ -129,27 +130,27 @@ code_change(_OldVsn, State, _Extra) ->
 client_loop(ClientSock,ServerPid) when ServerPid == undefined ->
 	receive
 		{server,Pid} ->
-			inet:setopts(ClientSock,[{active,once}]),
+			gen_socket:setopts(ClientSock,[{active,once}]),
 			client_loop(ClientSock,Pid);
 		_ ->
 			client_loop(ClientSock,ServerPid)
 	end;
 client_loop(Sock,SvrPid) ->
 	receive
-		{tcp,Sock,Data} ->
-			inet:setopts(Sock,[{active,once}]),
+		{gen_socket,Sock,Data} ->
+			gen_socket:setopts(Sock,[{active,once}]),
 			SvrPid ! {client_tcp,Data},
 			client_loop(Sock,SvrPid);
 		{server_tcp,Data} ->
-			gen_tcp:send(Sock,Data),
+			gen_socket:send(Sock,Data),
 			client_loop(Sock,SvrPid);
-		{tcp_closed,Sock} ->
+		{gen_socket_closed,Sock} ->
 			SvrPid ! client_closed,
 			ok;
 		server_closed ->
-			gen_tcp:close(Sock),
+			gen_socket:close(Sock),
 			ok;
-		{tcp_error,Sock,Reason} ->
+		{gen_socket_error,Sock,Reason} ->
 			?DEBUG_MSG("Socket closed: ~p~n",[Reason]),
 			SvrPid ! client_closed
 	end.
@@ -157,27 +158,27 @@ client_loop(Sock,SvrPid) ->
 server_loop(ServerSock,ClientPid) when ClientPid == undefined ->
 	receive
 		{client,Pid} ->
-			inet:setopts(ServerSock,[{active,once}]),
+			gen_socket:setopts(ServerSock,[{active,once}]),
 			server_loop(ServerSock,Pid);
 		_ ->
 			server_loop(ServerSock,ClientPid)
 	end;
 server_loop(Sock,CliPid) ->
 	receive
-		{tcp,Sock,Data} ->
-			inet:setopts(Sock,[{active,once}]),
+		{gen_socket,Sock,Data} ->
+			gen_socket:setopts(Sock,[{active,once}]),
 			CliPid ! {server_tcp,Data},
 			server_loop(Sock,CliPid);
 		{client_tcp,Data} ->
-			gen_tcp:send(Sock,Data),
+			gen_socket:send(Sock,Data),
 			server_loop(Sock,CliPid);
-		{tcp_closed,Sock} ->
+		{gen_socket_closed,Sock} ->
 			CliPid ! server_closed,
 			ok;
 		client_closed ->
-			gen_tcp:close(Sock),
+			gen_socket:close(Sock),
 			ok;
-		{tcp_error,Sock,Reason} ->
+		{gen_socket_error,Sock,Reason} ->
 			?DEBUG_MSG("Server socket closed: ~p~n",[Reason]),
 			CliPid ! server_closed
 	end.

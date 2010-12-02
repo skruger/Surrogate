@@ -4,7 +4,7 @@
 -record(request_rec,{proxytype,method,path,protocol,host,state,port}).
 -record(response_rec,{protocol,code,text}).
 
--record(proxy_pass,{server_sock,client_sock,request,headers,recv_buff,proxy_type,userinfo,csock_mod}).
+-record(proxy_pass,{server_sock,client_sock,request,headers,recv_buff,proxy_type,userinfo,sock_closed}).
 
 -record(filter_check,{hosts,urls}).
 

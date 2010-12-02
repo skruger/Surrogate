@@ -17,7 +17,7 @@
 %% --------------------------------------------------------------------
 %% Internal exports
 %% --------------------------------------------------------------------
--export([run/0]).
+-export([run/0,mnesia_init/0]).
 
 %% --------------------------------------------------------------------
 %% Macros
@@ -40,6 +40,9 @@ run() ->
 	application:start(ssl),
 	application:load(surrogate),
 	application:start(surrogate).
+
+mnesia_init() ->
+	mnesia:create_schema([node()]).
 
 %% ====================================================================!
 %% External functions

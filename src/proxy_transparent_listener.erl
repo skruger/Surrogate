@@ -46,13 +46,19 @@ init(Args) ->
 
 do_accept(Parent,Listen) ->
 	case gen_tcp:accept(Listen,300000) of
-		{ok,Sock} ->
-%% 			io:format("do_accept() socket ~p for ~p~n",[Sock,Parent]),
-			gen_tcp:controlling_process(Sock,Parent),
-			gen_server:cast(Parent,{accept,{ok,Sock}});
+		{ok,Sock0} ->
+			case gen_socket:create(Sock0,gen_tcp) of
+				{ok,Sock} ->
+					gen_socket:controlling_process(Sock,Parent),
+					gen_server:cast(Parent,{accept,{ok,Sock}});
+				Err1 ->
+					?ERROR_MSG("error creating gen_socket: ~p~n",[Err1]),
+					gen_server:cast(Parent,{accept,Err1})
+			end;
 		Err ->
 			gen_server:cast(Parent,{accept,Err})
-	end.
+		end.
+			
 
 
 %% --------------------------------------------------------------------
@@ -93,7 +99,7 @@ handle_cast({accept,{ok,Sock}},State) ->
 	case proxylib:parse_request(ProxyPass#proxy_pass.request) of
 		Req ->
 			{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{proxy_type=Req#request_rec.proxytype}),
-			gen_tcp:controlling_process(Sock,Pid),
+			gen_socket:controlling_process(Sock,Pid),
 			gen_fsm:send_event(Pid,{socket,Sock}),
 			{stop,normal,State}
 	end;
