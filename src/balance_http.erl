@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([listen_master/2,accept_http/2,http_balance/2,accept_https/2,https_balance/2,start_link/1]).
+-export([listen_master/2,accept_http/2,http_balance/2,accept_https/2,start_link/1]).
 
 %% gen_fsm callbacks
 -export([init/1,  handle_event/3,
@@ -47,7 +47,7 @@ start_link(Args) ->
 %% --------------------------------------------------------------------
 init({balance_http,Bind,Port,Props}=L) ->
 	?INFO_MSG("~p HTTP listening: ~p~n",[?MODULE,L]),
-	case gen_tcp:listen(Port,[Bind,inet,binary,{active,true},{reuseaddr,true}]) of
+	case gen_tcp:listen(Port,[Bind,inet,binary,{active,false},{reuseaddr,true}]) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
 			{ok, listen_master, #socket_state{type=http,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
@@ -111,10 +111,10 @@ listen_master({child_accepted,Pid},State) ->
 
 accept_http(wait,State) ->
 	case gen_tcp:accept(State#worker_state.client_sock) of
-		{ok,Sock} ->
+		{ok,Sock0} ->
+			{ok,Sock} = gen_socket:create(Sock0,gen_tcp),
 			gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
 			gen_fsm:send_event(self(),get_headers),
-			inet:setopts(Sock,[{active,false}]),
 %% 			io:format("~p Accepted ~p~n",[?MODULE,Sock]),
 			{next_state,http_balance,State#worker_state{client_sock=Sock}};
 		{error,timeout} ->
@@ -132,7 +132,7 @@ http_balance(get_headers,State) ->
 	Sock = State#worker_state.client_sock,
 	ProxyPass = header_parse:receive_headers(Parse,Sock),
 	{ok,Pid} = proxy_pass:start(ProxyPass),
-	gen_tcp:controlling_process(Sock,Pid),
+	gen_socket:controlling_process(Sock,Pid),
 	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
 	Pool = proplists:get_value(pool,State#worker_state.proplist,undefined),
 	gen_fsm:send_event(Pid,{balance,Pool,Port,Sock}),
@@ -141,12 +141,13 @@ http_balance(get_headers,State) ->
 accept_https({wait,ListenSock},State) ->
 %% 	io:format("~p accept_https(),~p",[?MODULE,State]),
 	case ssl:transport_accept(ListenSock) of
-		{ok,Sock} ->
-			case ssl:ssl_accept(Sock) of
+		{ok,Sock0} ->
+			case ssl:ssl_accept(Sock0) of
 				ok ->
+					{ok,Sock} = gen_socket:create(Sock0,ssl),
 					gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
 					gen_fsm:send_event(self(),get_headers),
-					{next_state,https_balance,State#worker_state{client_sock=Sock}};
+					{next_state,http_balance,State#worker_state{client_sock=Sock}};
 				SSLErr ->
 					?ERROR_MSG("SSL Error: ~p~n",[SSLErr]),
 					{stop,normal,State}
@@ -161,16 +162,16 @@ accept_https({wait,ListenSock},State) ->
 			{stop,normal,State}
 	end.
 
-https_balance(get_headers,State) ->
-	{ok,Parse} = header_parse:start_link(),
-	Sock = State#worker_state.client_sock,
-	ProxyPass = header_parse:receive_ssl_headers(Parse,Sock),
-	{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{userinfo=balancer}),
-	ssl:controlling_process(Sock,Pid),
-	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
-	Pool = proplists:get_value(pool,State#worker_state.proplist,undefined),
-	gen_fsm:send_event(Pid,{balance,Pool,Port,Sock}),
-	{stop,normal,State}.
+%% https_balance(get_headers,State) ->
+%% 	{ok,Parse} = header_parse:start_link(),
+%% 	Sock = State#worker_state.client_sock,
+%% 	ProxyPass = header_parse:receive_ssl_headers(Parse,Sock),
+%% 	{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{userinfo=balancer}),
+%% 	ssl:controlling_process(Sock,Pid),
+%% 	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
+%% 	Pool = proplists:get_value(pool,State#worker_state.proplist,undefined),
+%% 	gen_fsm:send_event(Pid,{balance,Pool,Port,Sock}),
+%% 	{stop,normal,State}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/3

@@ -50,10 +50,10 @@ init(Args) ->
 %% --------------------------------------------------------------------
 accept(wait, StateData) ->
 	case gen_tcp:accept((StateData#state.listen_args)#proxy_listener.listen_sock) of
-		{ok,Sock} ->
+		{ok,Sock0} ->
+			{ok,Sock} = gen_socket:create(Sock0,gen_tcp),
 			gen_server:cast((StateData#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
 			gen_fsm:send_event(self(),recv_version),
-			inet:setopts(Sock,[{active,false}]),
 %% 			io:format("Accepted ~p~n",[Sock]),
 			{next_state,socks_init,StateData#state{client_sock=Sock}};
 		{error,timeout} ->
@@ -67,7 +67,7 @@ accept(wait, StateData) ->
 	end.
 
 socks_init(recv_version,StateData) ->
-	case gen_tcp:recv(StateData#state.client_sock,0) of
+	case gen_socket:recv(StateData#state.client_sock,0) of
 		{ok,<<5:8/integer,_MethodCt:8/integer,Methods/binary>>} ->
 			gen_fsm:send_event(self(),{select_method,Methods}),
 			{next_state,socks_init,StateData};
@@ -84,11 +84,11 @@ socks_init(recv_version,StateData) ->
 	end;
 socks_init({select_method,<<>>},StateData) ->
 	?INFO_MSG("No supported SOCKS 5 authentication methods.  Stopping.~n",[]),
-	gen_tcp:send(StateData#state.client_sock,<<5:8/integer,255:8/integer>>),
-	gen_tcp:close(StateData#state.client_sock),
+	gen_socket:send(StateData#state.client_sock,<<5:8/integer,255:8/integer>>),
+	gen_socket:close(StateData#state.client_sock),
 	{stop,normal,StateData};
 socks_init({select_method,<<0:8/integer,_R/binary>>},State) ->
-	gen_tcp:send(State#state.client_sock,<<5:8/integer,0:8/integer>>),
+	gen_socket:send(State#state.client_sock,<<5:8/integer,0:8/integer>>),
 	gen_fsm:send_event(self(),recv_request),
 	{next_state,socks_request,State#state{userinfo={socks5_user,anonymous}}};
 socks_init({select_method,<<M:8/integer,R/binary>>},State) ->
@@ -97,49 +97,50 @@ socks_init({select_method,<<M:8/integer,R/binary>>},State) ->
 	{next_state,socks_init,State}.
 
 socks_request(recv_request,State) ->
-	case gen_tcp:recv(State#state.client_sock,0) of
+	case gen_socket:recv(State#state.client_sock,0) of
 		%% Connect command
 		{ok,<<5:8/integer,1:8/integer,_Reserved:8/integer,AddrInfo/binary>> = _Pkt} ->
 			case decode_address(AddrInfo) of
 				{ok,_Host,80} ->
 					gen_fsm:send_event(self(),{connect,5}),
-					gen_tcp:send(State#state.client_sock,<<5:8/integer,0:8/integer,0:8/integer,AddrInfo/binary>>),
+					gen_socket:send(State#state.client_sock,<<5:8/integer,0:8/integer,0:8/integer,AddrInfo/binary>>),
 					{next_state,http_proxy,State};
 				{ok,Host,Port} ->
 					?DEBUG_MSG("Socks CONNECT to ~p:~p~n",[Host,Port]),
 					case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
-						{ok,ServerSock} ->
-							gen_tcp:send(State#state.client_sock,<<5:8/integer,0:8/integer,0:8/integer,AddrInfo/binary>>),
+						{ok,ServerSock0} ->
+							{ok,ServerSock} = gen_socket:create(ServerSock0,gen_tcp),
+							gen_socket:send(State#state.client_sock,<<5:8/integer,0:8/integer,0:8/integer,AddrInfo/binary>>),
 							proxy_connect:socks5_connect(State#state.client_sock,ServerSock),
 							{stop,normal,State};
 						{error,econnrefused} ->
 							?ERROR_MSG("Connection refused: ~p:~p~n",[Host,Port]),
-							gen_tcp:send(State#state.client_sock,<<5:8/integer,5:8/integer,0:8/integer,AddrInfo/binary>>),
+							gen_socket:send(State#state.client_sock,<<5:8/integer,5:8/integer,0:8/integer,AddrInfo/binary>>),
 							{stop,normal,State};
 						{error,ehostunreach} ->
 							?ERROR_MSG("Host unreachable: ~p:~p~n",[Host,Port]),
-							gen_tcp:send(State#state.client_sock,<<5:8/integer,4:8/integer,0:8/integer,AddrInfo/binary>>),
+							gen_socket:send(State#state.client_sock,<<5:8/integer,4:8/integer,0:8/integer,AddrInfo/binary>>),
 							{stop,normal,State};
 						
 						Err ->
 							?ERROR_MSG("General connection error: ~p ~p:~p~n",[Err,Host,Port]),
-							gen_tcp:send(State#state.client_sock,<<5:8/integer,1:8/integer,0:8/integer,AddrInfo/binary>>),
+							gen_socket:send(State#state.client_sock,<<5:8/integer,1:8/integer,0:8/integer,AddrInfo/binary>>),
 							{stop,normal,State}
 					end;
 				Err ->
 					?ERROR_MSG("Error: (~p) Invalid host info: ~p",[Err,AddrInfo]),
 					%% Respond with "Address type not supported"
-					gen_tcp:send(State#state.client_sock,<<5:8/integer,8:8/integer,0:8/integer,AddrInfo/binary>>),
+					gen_socket:send(State#state.client_sock,<<5:8/integer,8:8/integer,0:8/integer,AddrInfo/binary>>),
 					{stop,normal,State}
 			end;
 		{ok,<<5:8/integer,Cmd:8/integer,_:8/integer,Rest/binary>> = Pkt} ->
 			?ERROR_MSG("Unsupported command: ~p~n~p~n",[Cmd,Pkt]),
-			gen_tcp:send(State#state.client_sock,<<5:8/integer,7:8/integer,0:8/integer,Rest/binary>>),
-			gen_tcp:close(State#state.client_sock),
+			gen_socket:send(State#state.client_sock,<<5:8/integer,7:8/integer,0:8/integer,Rest/binary>>),
+			gen_socket:close(State#state.client_sock),
 			{stop,normal,State};
 		Err ->
 			?ERROR_MSG("Unexpected error while waiting for request: ~p~n",[Err]),
-			gen_tcp:close(State#state.client_sock),
+			gen_socket:close(State#state.client_sock),
 			{stop,normal,State}
 	end.
 			
@@ -160,18 +161,19 @@ socks4_request({request,<<4:8/integer,1:8/integer,Port:16/integer,A:8,B:8,C:8,D:
 	end,
 	if
 		Port == 80 ->
-			gen_tcp:send(State#state.client_sock,<<0:8/integer,90:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
+			gen_socket:send(State#state.client_sock,<<0:8/integer,90:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
 			gen_fsm:send_event(self(),{connect,4}),
 			{next_state,http_proxy,State#state{userinfo={socks4_user,ProxyUser}}};
 		true ->
 			case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
-				{ok,ServerSock} ->
-					gen_tcp:send(State#state.client_sock,<<0:8/integer,90:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
+				{ok,ServerSock0} ->
+					{ok,ServerSock} = gen_socket:create(ServerSock0,gen_tcp),
+					gen_socket:send(State#state.client_sock,<<0:8/integer,90:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
 					proxy_connect:socks5_connect(State#state.client_sock,ServerSock),
 					{stop,normal,State};
 				Err ->
 					?ERROR_MSG("General connection error (socks4): ~p ~p:~p~n",[Err,Host,Port]),
-					gen_tcp:send(State#state.client_sock,<<0:8/integer,91:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
+					gen_socket:send(State#state.client_sock,<<0:8/integer,91:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
 					{stop,normal,State}
 			
 			end
@@ -179,7 +181,7 @@ socks4_request({request,<<4:8/integer,1:8/integer,Port:16/integer,A:8,B:8,C:8,D:
 socks4_request({request,Req},State) ->
 	?ERROR_MSG("Unsupported SOCKS 4 Request: ~p~n",[Req]),
 	<<_:2/binary,AddrInfo:6/binary,_/binary>> = Req,
-	gen_tcp:send(State#state.client_sock,<<0:8/integer,91:8/integer,AddrInfo>>),
+	gen_socket:send(State#state.client_sock,<<0:8/integer,91:8/integer,AddrInfo>>),
 	{stop,normal,State}.
 	
 
@@ -192,11 +194,11 @@ http_proxy({connect,Ver},State) ->
 	case proxylib:parse_request(ProxyPass#proxy_pass.request) of
 		#request_rec{method="CONNECT"} ->
 			proxy_connect:http_connect(ProxyPass#proxy_pass{client_sock=Sock,proxy_type={socks,Ver}}),
-%% 			gen_tcp:close(Sock),
+%% 			gen_socket:close(Sock),
 			?DEBUG_MSG("Request: ~p~n",[ProxyPass#proxy_pass.request]),
 			{stop,normal,State};
 		_ ->
-			gen_tcp:controlling_process(Sock,Pid),
+			gen_socket:controlling_process(Sock,Pid),
 			gen_fsm:send_event(Pid,{socket,Sock}),
 			{stop,normal,State}
 	end.

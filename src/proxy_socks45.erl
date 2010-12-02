@@ -46,7 +46,7 @@ start_link(PropList) ->
 init([PropList]) ->
    	?DEBUG_MSG("~p starting.~n",[?MODULE]),
 	Port = proplists:get_value(listen,PropList,1080),
-    case gen_tcp:listen(Port,[inet,binary,{active,true},{reuseaddr,true}]) of
+    case gen_tcp:listen(Port,[inet,binary,{active,false},{reuseaddr,true}]) of
 		{ok,ListenSock} ->
 			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self()},
 			gen_server:cast(self(),check_listeners),
