@@ -50,8 +50,8 @@ http_connect(ProxyPass) ->
 socks5_connect(ClientSock,ServerSock) ->
 	ServerPid = spawn(?MODULE,server_loop,[ServerSock,undefined]),
 	ClientPid = spawn(?MODULE,client_loop,[ClientSock,undefined]),
-	gen_server:controlling_process(ServerSock,ServerPid),
-	gen_server:controlling_process(ClientSock,ClientPid),
+	gen_socket:controlling_process(ServerSock,ServerPid),
+	gen_socket:controlling_process(ClientSock,ClientPid),
 	ServerPid ! {client,ClientPid},
 	ClientPid ! {server,ServerPid},
 	ok.
