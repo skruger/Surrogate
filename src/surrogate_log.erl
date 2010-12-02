@@ -75,7 +75,7 @@ init([]) ->
 				 none ->
 					 undefined;
 				 EFileName ->
-					 case file:open(EFileName,[write,append]) of
+					 case file:open(EFileName,[write,append,delayed_write]) of
 						 {ok,EFile} ->
 							 EFile;
 						 EErr ->
@@ -86,7 +86,7 @@ init([]) ->
 	AccessLog = case get_accesslog() of
 					none -> undefined;
 					AFileName ->
-						case file:open(AFileName,[write,append]) of
+						case file:open(AFileName,[write,append,delayed_write]) of
 							{ok,AFile} ->
 								AFile;
 							AErr ->

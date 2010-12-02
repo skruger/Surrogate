@@ -27,21 +27,29 @@
 %% ====================================================================
 
 http_connect(ProxyPass) ->
+	FList = proplists:get_value(proxy_filters,ProxyPass#proxy_pass.config,[]),
 	{ok,Host,Port} = proxylib:parse_connect((ProxyPass#proxy_pass.request)#header_block.rstr),
-	case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
-		{ok,SvrSock0} ->
-			{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
-			ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
-			ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
-			gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
-			gen_socket:controlling_process(SvrSock,ServerPid),
-			gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
-			ServerPid ! {client,ClientPid},
-			ClientPid ! {server,ServerPid},
-			ok;
-		{error,ErrStat} = Err ->
-			gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p",[ErrStat]))}),
-			Err
+	case filter_check:host(FList,Host,ProxyPass#proxy_pass.userinfo) of
+		deny ->
+			EMsg = io_lib:format("Deny by rule for host: ~p~nHdr: ~p~n",[Host,(ProxyPass#proxy_pass.request)#header_block.headers]),
+			gen_fsm:send_event(self(),{error,403,"Forbidden",lists:flatten(EMsg)}),
+			{error,filter_block};
+		Ok ->
+			case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
+				{ok,SvrSock0} ->
+					{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
+					ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
+					ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
+					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
+					gen_socket:controlling_process(SvrSock,ServerPid),
+					gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
+					ServerPid ! {client,ClientPid},
+					ClientPid ! {server,ServerPid},
+					ok;
+				{error,ErrStat} = Err ->
+					gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p",[ErrStat]))}),
+					Err
+			end
 	end.
 			
 

@@ -17,7 +17,9 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([filter_start/0,filter_host/2,filter_url/2,test/2]).
+-export([filter_host/2,filter_url/2,filter_childspec/0]).
+
+-export([filter_start/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -31,6 +33,10 @@
 
 filter_start() ->
 	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+
+filter_childspec() ->
+	{filter_host,{filter_host,filter_start,[]},
+	 permanent,2000,worker,[]}.
 
 filter_host(Host,User) ->
 	gen_server:call(?MODULE,{host,Host,User}).
@@ -259,23 +265,4 @@ load_url_lines(FileData,Rule) ->
 			load_url_lines(Rest,Rule)
 	end.
 
-test(Name,Path) ->
-	Fun = fun() ->
-				  MatchHead = #filter_url_list{host=Name,path='$1',rule='$2'},
-				  mnesia:select(filter_url_list,[{MatchHead,[{'==','$1',Path}],['$2']}])
-%% 				  io:format("Got Sel=~p~n",[Sel]),
-%% 				  Guard = {'==','$1',Name}
-%% 				  MatchHead = #filter_host_list{host='$1',_='_'},
-%% 				  Sel = mnesia:select(filter_host_list,[{MatchHead,[],['$1']}]),
-%% 				  mnesia:read(filter_url_list,Name)
-%% 				  Sel
-%% 				  lists:map(fun(S) -> [R] = mnesia:read(filter_url_list,S),R end,Sel)
-		  end,
-	case mnesia:transaction(Fun) of
-%% 		{atomic,[]} ->
-%% 			ok;
-%% 		{atomic,[Rec|_]} ->
-%% 			Rec#filter_host_list.rule;
-		Other ->
-			Other
-	end.
+

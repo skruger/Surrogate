@@ -82,6 +82,18 @@ init(State) ->
 		Err ->
 			?CRITICAL("Invalid {mysql_conn,{Host, Port, User, Password, Database}} configuration option.~n~p~n",[Err])
 	end,
+	%% Start filters as specified in proxy.conf
+	Filters = proplists:get_value(start_filters,State#state.config_terms,[]),
+	StartFilter = fun(F1) ->
+						  Spec = F1:filter_childspec(),
+						  case supervisor:start_child(surrogate_sup,Spec) of
+							  {error,_} = FilterErr ->
+								  ?CRITICAL("Got error ~p when starting ~p with spec:~n~p~n",[FilterErr,F1,Spec]);
+							  _ -> ?DEBUG_MSG("~p started: ~p~n",[F1,Spec])
+						  end
+				  end,
+	RunFilter = fun() -> lists:foreach(StartFilter,Filters) end,
+	spawn(RunFilter),
 	LogLevel = proplists:get_value(log_level,State#state.config_terms,5),
 	surrogate_log:log_level(LogLevel),
     ?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),

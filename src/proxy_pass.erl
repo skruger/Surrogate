@@ -132,7 +132,7 @@ proxy_auth({check_auth,AuthCfg},State) ->
 proxy_auth(send_challenge,State) ->
 %% 	io:format("Sending auth challenge~n"),
 	AuthReq = "HTTP/1.1 407 Proxy Auth\r\nProxy-Authenticate: Basic realm=\"FastProxy2\"\r\nConnection: close\r\n\r\n",
-	?ACCESS_LOG(407,State#proxy_pass.request,"nouser","Proxy authorization request."),
+	?ACCESS_LOG(407,(State#proxy_pass.request)#header_block.rstr,"nouser","Proxy authorization request."),
 	gen_socket:send(State#proxy_pass.client_sock,AuthReq),
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State}.
@@ -159,16 +159,24 @@ proxy_connect(open_socket,State) ->
 	case dict:find("host",Dict) of
 		{ok,HostStr} ->
 			{host,Host,Port} = proxylib:parse_host(HostStr,80),
-			case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
-				{ok,SSock0} ->
-					{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-					gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
-					{next_state,client_send,State#proxy_pass{server_sock=SSock}};
-				
-				{error,ErrStat} = Err ->
-					?DEBUG_MSG("~p connect() error: ~p~n~p~n",[?MODULE,Err,HostStr]),
-					gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p ~p",[HostStr,ErrStat]))}),
-					{next_state,proxy_error,State}
+			FList = proplists:get_value(proxy_filters,State#proxy_pass.config,[]),
+			case filter_check:host(FList,Host,State#proxy_pass.userinfo) of
+				deny ->
+					EMsg = io_lib:format("Deny by rule for host: ~p~n<br/>Hdr: ~p~n",[Host,(State#proxy_pass.request)#header_block.headers]),
+					gen_fsm:send_event(self(),{error,403,"Forbidden",lists:flatten(EMsg)}),
+					{next_state,proxy_error,State};
+				_Ok ->
+					case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
+						{ok,SSock0} ->
+							{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
+							gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
+							{next_state,client_send,State#proxy_pass{server_sock=SSock}};
+						
+						{error,ErrStat} = Err ->
+							?DEBUG_MSG("~p connect() error: ~p~n~p~n",[?MODULE,Err,HostStr]),
+							gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p ~p",[HostStr,ErrStat]))}),
+							{next_state,proxy_error,State}
+					end
 			end;
 		_Err ->
 			?INFO_MSG("Didn't receive a host header: ~p~n",[dict:to_list(Dict)]),
@@ -297,9 +305,11 @@ proxy_error({error,Code},State) ->
 			{next_state,proxy_error,State}
 	end;
 proxy_error({error,Code,Desc},State) ->
+	proxy_error({error,Code,"Proxy Error",Desc},State);
+proxy_error({error,Code,RText,Desc},State) ->
 	?DEBUG_MSG("Proxy error: ~p ~p~n",[Code,Desc]),
 	ICode = integer_to_list(Code),
-	Err = "HTTP/1.0 "++ICode++" "++Desc++"\r\nContent-type: text/html\r\nConnection: close\r\n\r\n",
+	Err = "HTTP/1.0 "++ICode++" "++RText++"\r\nContent-type: text/html\r\nConnection: close\r\n\r\n",
 	EResponse = lists:flatten(io_lib:format("~s<h3>~s - ~s</h3>",[Err,ICode,Desc])),
 	?ACCESS_LOG(Code,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,Desc),
 	gen_socket:send(State#proxy_pass.client_sock,EResponse),

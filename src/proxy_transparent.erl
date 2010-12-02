@@ -114,7 +114,7 @@ handle_cast(Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_info({'DOWN',_,process,Pid,normal},State) ->
+handle_info({'DOWN',_,process,Pid,_},State) ->
 	gen_server:cast(self(),check_listeners),
 	{noreply,State#state{listeners = lists:delete(Pid,State#state.listeners)}};
 handle_info(Info, State) ->
