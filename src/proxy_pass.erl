@@ -21,7 +21,7 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--export([proxy_start/2,proxy_client_read/2,proxy_auth/2,proxy_connect/2,client_send/2,server_recv/2,server_start_recv/2,proxy_error/2]).
+-export([proxy_start/2,proxy_client_read/2,proxy_auth/2,proxy_connect/2,client_send/2,server_recv_11/2,proxy_error/2]).
 
 %% -define(LOG(N,P),lists:flatten(io_lib:format(~p)
 
@@ -99,8 +99,8 @@ proxy_client_read(get_headers,State0) ->
 			{next_state,proxy_auth,State}
 	end.
 
-proxy_auth({check_auth,AuthCfg},State) ->
-	?DEBUG_MSG("Check auth: ~p~n",[AuthCfg]),
+proxy_auth({check_auth,_AuthCfg},State) ->
+%% 	?DEBUG_MSG("Check auth: ~p~n",[AuthCfg]),
 	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 	case dict:find("proxy-authorization",Dict) of
 		{ok,"Basic "++AuthStr} ->
@@ -190,7 +190,8 @@ proxy_connect(open_socket,State) ->
 client_send({headers,Hdr},State) ->
 	HBlock = proxylib:combine_headers(Hdr),
 	Req = (State#proxy_pass.request)#header_block.request,
-	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,"HTTP/1.0",HBlock])),
+%% 	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,"HTTP/1.0",HBlock])),
+	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol,HBlock])),
 	gen_socket:send(State#proxy_pass.server_sock,RequestText),
 	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 	case dict:find("content-length",Dict) of
@@ -200,11 +201,11 @@ client_send({headers,Hdr},State) ->
 			{next_state,client_send,State};
 		_ ->
 			gen_fsm:send_event(self(),response),
-			{next_state,server_start_recv,State}
+			{next_state,server_recv_11,State}
 	end;		
 client_send({request_body,Len},State) when Len < 1 ->
 	gen_fsm:send_event(self(),response),
-	{next_state,server_start_recv,State};
+	{next_state,server_recv_11,State};
 client_send({request_body,Len},State) when (State#proxy_pass.request)#header_block.body /= <<>> ->
 	gen_socket:send(State#proxy_pass.server_sock,(State#proxy_pass.request)#header_block.body),
 	gen_fsm:send_event(self(),{request_body,Len-trunc(bit_size((State#proxy_pass.request)#header_block.body)/8)}),
@@ -219,83 +220,51 @@ client_send({request_body,Len},State) ->
 		{error,Reason} ->
 			?INFO_MSG("Error reading client socket: ~p~n",[Reason]),
 			gen_fsm:send_event(self(),response),
-			{next_state,server_start_recv,State}
+			{next_state,server_recv_11,State}
 	end.
 
-server_start_recv(response,State) ->
-	ResHdr = header_parse:get_headers(State#proxy_pass.server_sock,response),
-	case ResHdr#header_block.response of
-		#response_rec{code=RCode} ->
-			?ACCESS_LOG(RCode,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr);
-		_PErr ->
-			ok
-	end,
+
+server_recv_11(response,State) ->
+%% 	?DEBUG_MSG("Staring proxy_read_response (~p)~n",[self()]),
+	case proxy_read_response:start(State#proxy_pass.server_sock,State#proxy_pass.request) of
+		{proxy_read_response,_} = RDrv ->
+			{next_state,server_recv_11,State#proxy_pass{response_driver=RDrv}};
+		Err ->
+			?ERROR_MSG("Error starting proxy_read_response: ~p~n",[Err]),
+			EMsg = io_lib:format("Internal proxy error: ~p",[Err]),
+			gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+			{next_state,proxy_error,State}
+	end;
+server_recv_11({response_header,ResHdr,ResponseSize},State) ->
+%% 	?DEBUG_MSG("Got response_header (~p).~n",[self()]),
 	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(ResHdr#header_block.headers)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
-	case proxylib:method_has_data(State#proxy_pass.request,ResHdr) of
-		true ->
-			Dict = proxylib:header2dict(ResHdr#header_block.headers),
-			case dict:find("content-length",Dict) of
-				{ok,Length} ->
-					{Len,_} = string:to_integer(Length),
-					if 
-						ResHdr#header_block.body /= <<>> ->
-							gen_socket:send(State#proxy_pass.client_sock,ResHdr#header_block.body),
-							gen_fsm:send_event(self(),{response,Len-trunc(bit_size(ResHdr#header_block.body)/8)});
-						true ->
-							gen_fsm:send_event(self(),{response,Len})
-					end;
-				_Err ->
-%% 					?DEBUG_MSG("No content-length header:~n~p~n~p~n~p~n",[(State#proxy_pass.request)#header_block.rstr,ResHdr#header_block.rstr,ResHdr#header_block.headers]),
-					gen_fsm:send_event(self(),response),
-					gen_socket:send(State#proxy_pass.client_sock,ResHdr#header_block.body)
-			end;
-		false ->
-%% 			io:format("No content expected:~n~p~n~p~n",[State#proxy_pass.request,SvrHeader]),
-			gen_fsm:send_event(self(),{response,0})
-	end,
-	{next_state,server_recv,State#proxy_pass{response=ResHdr}}.
-
-server_recv({response,Len},State) when Len < 1->
-%% 	?DEBUG_MSG("Response ended with Len=~p~n",[Len]),
+	proxy_read_response:get_next(State#proxy_pass.response_driver),
+	{next_state,server_recv_11,State#proxy_pass{response=ResHdr,response_bytes_left=ResponseSize}};
+server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_left == chunked ->
+%% 	?DEBUG_MSG("Got chunked {response_data,_}, send out as a chunk.~p~n",[self()]),
+	DataLen = list_to_binary(erlang:integer_to_list(trunc(bit_size(Data)/8),16)),
+	DataOut = <<DataLen/binary,"\r\n",Data/binary,"\r\n">>,
+	gen_socket:send(State#proxy_pass.client_sock,DataOut),
+	proxy_read_response:get_next(State#proxy_pass.response_driver),
+	{next_state,server_recv_11,State};
+server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == chunked ->
+	gen_socket:send(State#proxy_pass.client_sock,<<"0\r\n\r\n">>),
+%% 	?DEBUG_MSG("Done, Stopping ~p after ~p bytes in chunked mode.~n",[self(),Size]),
 	gen_socket:close(State#proxy_pass.server_sock),
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State};
-server_recv({response,Len},State) ->
-	case gen_socket:recv(State#proxy_pass.server_sock,0,300000) of
-		{ok,Packet} ->
-			gen_socket:send(State#proxy_pass.client_sock,Packet),
-			gen_fsm:send_event(self(),{response,Len-trunc(bit_size(Packet)/8)}),
-			{next_state,server_recv,State};
-		{error,closed} ->
-%% 			io:format("Socket closed: ~p~n",[State#proxy_pass.request]),
-			gen_socket:close(State#proxy_pass.client_sock),
-			{stop,normal,State};
-		{error,Reason} ->
-			?DEBUG_MSG("Recv ended: ~p~n",[Reason]),
-			gen_socket:close(State#proxy_pass.client_sock),
-			{stop,normal,State}
-	end;
-%% send_event(self(),response) is used for connections that do not implement content-length headers
-%% The headers have already been recieved and the data should be flowing.  A gen_tcp:recv() timeout
-%% will kill the connection.  This is normal with HTTP/1.0 responses sending content of unknown length.
-server_recv(response,State) ->
-	case catch gen_socket:recv(State#proxy_pass.server_sock,0,60000) of
-		{ok,Packet} ->
-			gen_socket:send(State#proxy_pass.client_sock,Packet),
-			gen_fsm:send_event(self(),response),
-			{next_state,server_recv,State};
-		{error,closed} ->
-			gen_socket:close(State#proxy_pass.client_sock),
-			{stop,normal,State};
-		{error,Reason} ->
-			?DEBUG_MSG("Recv ended: ~p~n",[Reason]),
-			{stop,normal,State};
-		{'EXIT',Err} ->
-			?ERROR_MSG("server_recv(response): Error waiting for response in HTTP/1.0 mode.~n~p~n",[Err]),
-			gen_socket:close(State#proxy_pass.client_sock),
-			{stop,normal,State}
-	end.
+server_recv_11({response_data,Data},State) ->
+%% 	?DEBUG_MSG("Got {response_data,_}. ~p~n",[self()]),
+	gen_socket:send(State#proxy_pass.client_sock,Data),
+	proxy_read_response:get_next(State#proxy_pass.response_driver),
+	{next_state,server_recv_11,State};
+server_recv_11({end_response_data,_Size},State) ->
+%% 	?DEBUG_MSG("Done, Stopping ~p after ~p bytes~n",[self(),Size]),
+	gen_socket:close(State#proxy_pass.server_sock),
+	gen_socket:close(State#proxy_pass.client_sock),
+	{stop,normal,State}.
+
 
 proxy_error({error,Code},State) ->
 	?DEBUG_MSG("Proxy error: ~p~n",[Code]),
@@ -354,7 +323,27 @@ handle_sync_event(_Event, _From, StateName, StateData) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-handle_info(_Info, StateName, StateData) ->
+% {response_header,#header_block{},ResponseSize}
+% ResponseSize = int() | chunked
+%
+% {response_data,Data}
+% Data = binary()
+%
+% {end_response_data,ByteLength}
+handle_info({response_header,_,_}=I,StateName,StateData) ->
+%% 	?DEBUG_MSG("Got response header in state ~p~n",[StateName]),
+	gen_fsm:send_event(self(),I),
+	{next_state, StateName, StateData};
+handle_info({response_data,_}=I,StateName,StateData) ->
+%% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
+	gen_fsm:send_event(self(),I),
+	{next_state, StateName, StateData};
+handle_info({end_response_data,_}=I,StateName,StateData) ->
+%% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
+	gen_fsm:send_event(self(),I),
+	{next_state, StateName, StateData};
+handle_info(Info, StateName, StateData) ->
+	?ERROR_MSG("Unmatched info: ~p~n",[Info]),
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
