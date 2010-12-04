@@ -101,6 +101,7 @@ send_headers(run,State) ->
 		0 ->
 %% 			?DEBUG_MSG("No data to send.",[]),
 			State#state.parent ! {end_response_data,0},
+			gen_socket:controlling_process(State#state.sock,State#state.parent),
 			{stop,normal,State};
 		Size when Size > 0 ->
 %% 			?DEBUG_MSG("Starting with known size: ~p~n",[Size]),
@@ -113,7 +114,11 @@ send_headers(run,State) ->
 		
 
 read_response(check_data,State) when State#state.bytes_sent >= State#state.size ->
+	try gen_socket:recv(State#state.sock,0,10) % read and throw away last data (probably 0\r\n\r\n)
+	catch _:_ -> ok ; _ -> ok
+	end,
 	State#state.parent ! {end_response_data,State#state.bytes_sent},
+	gen_socket:controlling_process(State#state.sock,State#state.parent),
 	{stop,normal,State};
 read_response(check_data,State) when State#state.buff == <<>> ->
 %% 	?DEBUG_MSG("read_response() with no data requesting more: ~p ~p~n",[State#state.bytes_sent,State#state.size]),
@@ -173,6 +178,7 @@ read_chunked_response(check_data,State) ->
 				_ when Len == 0 ->
 					% Last chunk
 					State#state.parent ! {end_response_data,State#state.bytes_sent},
+					gen_socket:controlling_process(State#state.sock,State#state.parent),
 					{stop,normal,State};
 				CLen when CLen >= Len ->
 					% complete chunk

@@ -185,20 +185,24 @@ socks4_request({request,Req},State) ->
 	{stop,normal,State}.
 	
 
-http_proxy({connect,Ver},State) ->
+http_proxy({connect,_Ver},State) ->
 	Sock = State#state.client_sock,
-	ReqHdr = header_parse:get_headers(Sock,request),
+%% 	ReqHdr = header_parse:get_headers(Sock,request),
 %% 	?INFO_MSG("Reqhdr: ~p~n",[ReqHdr]),
-	{ok,Pid} = proxy_pass:start(#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype}),
-	case ReqHdr#header_block.request of
-		#request_rec{method="CONNECT"} ->
-			proxy_connect:http_connect(#proxy_pass{client_sock=Sock,proxy_type={socks,Ver},request=ReqHdr}),
-			{stop,normal,State};
-		_ ->
-			gen_socket:controlling_process(Sock,Pid),
-			gen_fsm:send_event(Pid,{socket,Sock}),
-			{stop,normal,State}
-	end.
+	{ok,Pid} = proxy_pass:start(#proxy_pass{config=(State#state.listen_args)#proxy_listener.config}),
+	gen_socket:controlling_process(Sock,Pid),
+	gen_fsm:send_event(Pid,{socket,Sock}),
+	{stop,normal,State}.
+	
+%% 	case ReqHdr#header_block.request of
+%% 		#request_rec{method="CONNECT"} ->
+%% 			proxy_connect:http_connect(#proxy_pass{client_sock=Sock,proxy_type={socks,Ver},request=ReqHdr}),
+%% 			{stop,normal,State};
+%% 		_ ->
+%% 			gen_socket:controlling_process(Sock,Pid),
+%% 			gen_fsm:send_event(Pid,{socket,Sock}),
+%% 			{stop,normal,State}
+%% 	end.
 
 %%     {next_state, state_name, StateData}.
 

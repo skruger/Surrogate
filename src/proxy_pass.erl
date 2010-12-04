@@ -21,7 +21,7 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--export([proxy_start/2,proxy_client_read/2,proxy_auth/2,proxy_connect/2,client_send/2,server_recv_11/2,proxy_error/2]).
+-export([proxy_start/2,proxy_client_read/2,proxy_auth/2,proxy_connect/2,client_send/2,server_recv_11/2,proxy_error/2,proxy_finish/2]).
 
 %% -define(LOG(N,P),lists:flatten(io_lib:format(~p)
 
@@ -48,7 +48,7 @@ start(Args) ->
 init(Args) ->
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
-    {ok, proxy_start, Args#proxy_pass{filters=FilterRef}}.
+    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0}}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -70,21 +70,27 @@ proxy_start({reverse_proxy,CSock,{host,Host,Port}=_Addr}=_L,State) ->
 			?INFO_MSG("reverse_proxy connect() error: ~p~n",[Err]),
 			{stop,normal,State}
 	end;
-proxy_start({balance,Pool,Port,Sock}=_L,State) ->
-%% 	io:format("Starting balancer: ~p~n",[L]),
-	case balancer:next(Pool) of
-		{IP,OPort} ->
-			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,OPort}}),
-			{next_state,proxy_start,State};
-		{_,_,_,_} = IP ->
-			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,Port}}),
-			{next_state,proxy_start,State};
-		_ ->
-			{stop,normal,State}
-	end.
+%% Used by load balancer to display error pages.
+proxy_start({error,_,_,_}=Err,State) ->
+	gen_fsm:send_event(self(),Err),
+	{next_state,proxy_error,State}.
+%% proxy_start({balance,Pool,Port,Sock}=_L,State) ->
+%% %% 	io:format("Starting balancer: ~p~n",[L]),
+%% 	case balancer:next(Pool) of
+%% 		{IP,OPort} ->
+%% 			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,OPort}}),
+%% 			{next_state,proxy_start,State};
+%% 		{_,_,_,_} = IP ->
+%% 			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,Port}}),
+%% 			{next_state,proxy_start,State};
+%% 		_ ->
+%% 			{stop,normal,State}
+%% 	end.
 
 proxy_client_read(get_headers,State0) ->
-	ReqHdr = header_parse:get_headers(State0#proxy_pass.client_sock,request),
+	ReqHdr0 = header_parse:get_headers(State0#proxy_pass.client_sock,request),
+	Via = io_lib:format("Via: ~s ~s (Surrogate)",[(ReqHdr0#header_block.request)#request_rec.protocol,net_adm:localhost()]),
+	ReqHdr = ReqHdr0#header_block{headers=proxylib:append_header(lists:flatten(Via),ReqHdr0#header_block.headers)},
 	State = State0#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype},
 %% 	case proxyconf:get(proxy_auth,false) of
 	case proplists:get_value(proxy_auth,State#proxy_pass.config,false) of
@@ -119,7 +125,10 @@ proxy_auth({check_auth,_AuthCfg},State) ->
 						{ok,UserInfo} ->
 %% 							io:format("User: ~p, Pass: ~p ok~n",[User,Pass]),
 							gen_fsm:send_event(self(),start),
-							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo}};
+							Hdr = proxylib:remove_header("proxy-authorization",(State#proxy_pass.request)#header_block.headers),
+%% 							Hdr = proxylib:replace_header("proxy-authorization","Proxy-Authorization: none",(State#proxy_pass.request)#header_block.headers),
+							Request = (State#proxy_pass.request)#header_block{headers=Hdr},
+							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo,request=Request}};
 						Err ->
 							?ERROR_MSG("Authentication error for ~p: ~p (~p)~n",[User,Err,Pass]),
 							gen_fsm:send_event(self(),send_challenge),
@@ -156,7 +165,7 @@ proxy_connect(start,State) ->
 			gen_fsm:send_event(self(),open_socket),
 			{next_state,proxy_connect,State}
 	end;
-proxy_connect(open_socket,State) ->
+proxy_connect(open_socket,State) when State#proxy_pass.server_sock == undefined ->
 	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 	case dict:find("host",Dict) of
 		{ok,HostStr} ->
@@ -184,7 +193,12 @@ proxy_connect(open_socket,State) ->
 			?INFO_MSG("Didn't receive a host header: ~p~n",[dict:to_list(Dict)]),
 			gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("No host header received from client",[]))}),
 			{next_state,proxy_error,State}
-	end.
+	end;
+proxy_connect(open_socket,State) ->
+	?DEBUG_MSG("Socket already open (keep alive)~n",[]),
+	gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
+	{next_state,client_send,State}.
+	
 
 
 							
@@ -249,9 +263,11 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
 server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == close ->
-	gen_socket:close(State#proxy_pass.server_sock),
-	gen_socket:close(State#proxy_pass.client_sock),
-	{stop,normal,State};
+%% 	gen_socket:close(State#proxy_pass.server_sock),
+%% 	gen_socket:close(State#proxy_pass.client_sock),
+%% 	{stop,normal,State};
+	gen_fsm:send_event(self(),next),
+	{next_state,proxy_finish,State};
 server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_left == chunked ->
 %% 	?DEBUG_MSG("Got chunked {response_data,_}, send out as a chunk.~p~n",[self()]),
 	DataLen = list_to_binary(erlang:integer_to_list(trunc(bit_size(Data)/8),16)),
@@ -261,10 +277,8 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	{next_state,server_recv_11,State};
 server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == chunked ->
 	gen_socket:send(State#proxy_pass.client_sock,<<"0\r\n\r\n">>),
-%% 	?DEBUG_MSG("Done, Stopping ~p after ~p bytes in chunked mode.~n",[self(),Size]),
-	gen_socket:close(State#proxy_pass.server_sock),
-	gen_socket:close(State#proxy_pass.client_sock),
-	{stop,normal,State};
+	gen_fsm:send_event(self(),next),
+	{next_state,proxy_finish,State};
 server_recv_11({response_data,Data},State) ->
 %% 	?DEBUG_MSG("Got {response_data,_}. ~p~n",[self()]),
 	gen_socket:send(State#proxy_pass.client_sock,Data),
@@ -272,11 +286,40 @@ server_recv_11({response_data,Data},State) ->
 	{next_state,server_recv_11,State};
 server_recv_11({end_response_data,_Size},State) ->
 %% 	?DEBUG_MSG("Done, Stopping ~p after ~p bytes~n",[self(),Size]),
-	gen_socket:close(State#proxy_pass.server_sock),
-	gen_socket:close(State#proxy_pass.client_sock),
-	{stop,normal,State}.
+%% 	gen_socket:close(State#proxy_pass.server_sock),
+%% 	gen_socket:close(State#proxy_pass.client_sock),
+%% 	{stop,normal,State}.
+	gen_fsm:send_event(self(),next),
+	{next_state,proxy_finish,State}.
+	
 
 
+proxy_finish(next,State) ->
+	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
+%% 	gen_socket:close(State#proxy_pass.server_sock),
+%% 	gen_socket:close(State#proxy_pass.client_sock),
+%% 	{stop,normal,State}.
+	case dict:find("proxy-connection",Dict) of
+		{ok,"keep-alive"} ->
+			?DEBUG_MSG("Proxy-Connection: keep-alive (~p)~n",[State#proxy_pass.keepalive]),
+			gen_fsm:send_event(self(),get_headers),
+			gen_socket:close(State#proxy_pass.server_sock),
+			{next_state,proxy_client_read,State#proxy_pass{server_sock=undefined,keepalive=State#proxy_pass.keepalive+1}};
+		{ok,"close"} ->
+			gen_socket:close(State#proxy_pass.server_sock),
+			gen_socket:close(State#proxy_pass.client_sock),
+			{stop,normal,State};
+		error ->
+			gen_socket:close(State#proxy_pass.server_sock),
+			gen_socket:close(State#proxy_pass.client_sock),
+			{stop,normal,State};
+		Conn ->
+			?DEBUG_MSG("Closing with unknown value \"Connection: ~p\"~n",[Conn]),
+			gen_socket:close(State#proxy_pass.server_sock),
+			gen_socket:close(State#proxy_pass.client_sock),
+			{stop,normal,State}
+	end.
+			
 proxy_error({error,Code},State) ->
 	?DEBUG_MSG("Proxy error: ~p~n",[Code]),
 	case Code of

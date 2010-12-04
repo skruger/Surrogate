@@ -12,9 +12,9 @@
 %%
 -export([header2dict/1,parse_host/2,parse_request/1,parse_response/1,parse_connect/1,combine_headers/1,split_headers/1,find_binary_pattern/2,method_has_data/2]).
 
--export([send/2,setopts/2]).
+%% -export([send/2,setopts/2]).
 
--export([get_pool_process/1]).
+-export([get_pool_process/1,remove_header/2,append_header/2,replace_header/3]).
 
 %% -export([re/1]).
 %%
@@ -30,9 +30,45 @@ header2dict([Hdr|R],Acc)->
 	case string:str(Hdr,":") of
 		Idx ->
 			Key = string:sub_string(Hdr,1,Idx-1),
-			Val = string:sub_string(Hdr,Idx+2),
+			Val0 = string:sub_string(Hdr,Idx+1),
+			Val = string:strip(Val0,left,$ ),
+			if Val0 == Val ->
+				   ?DEBUG_MSG("Header changed: ~p ~p -> ~p~n",[Key,Val0,Val]);
+			   true -> ok
+			end,
 			header2dict(R,[{string:to_lower(Key),Val}|Acc])
 	end.
+
+remove_header(Name,Hdr) ->
+	remove_header(Name,Hdr,[]).
+remove_header(_Name,[],Acc) ->
+	lists:reverse(Acc);
+remove_header(Name,[Hdr|R],Acc) ->
+	Idx = string:str(Hdr,":"),
+	case string:to_lower(string:sub_string(Hdr,1,Idx-1)) of
+		Name ->
+%% 			remove_header(Name,R,Acc);
+			lists:reverse(Acc)++R;
+		_ ->
+			remove_header(Name,R,[Hdr|Acc])
+	end.
+
+replace_header(Name,NewHdr,HdrBlock) ->
+	replace_header(Name,NewHdr,HdrBlock,[]).
+replace_header(_,_,[],Acc) ->
+	lists:reverse(Acc);
+replace_header(Name,NewHdr,[Hdr|R],Acc) ->
+	Idx = string:str(Hdr,":"),
+	case string:to_lower(string:sub_string(Hdr,1,Idx-1)) of
+		Name ->
+			lists:reverse(Acc)++[NewHdr|R];
+		_ ->
+			replace_header(Name,NewHdr,R,[Hdr|Acc])
+	end.
+
+
+append_header(Header,Block) ->
+	Block++[Header].
 
 parse_host(Host,DefPort) ->
 	case string:str(Host,":") of
@@ -72,7 +108,7 @@ split_headers(Header,Req,Acc) ->
 			Rest = string:sub_string(Header,Idx+2),
 			split_headers(Rest,Req,[Hdr|Acc])
 	end.
-	
+
 parse_connect(Req) ->
 	case parse_request(Req) of
 		#request_rec{method="CONNECT",path=HostPort} = _ReqRec ->
@@ -180,15 +216,15 @@ get_pool_process(PoolName) ->
 
 			%% 	string:str(binary_to_list(Subject),binary_to_list(Pat)).
 
-send({sslsocket,_,_} = Sock,Data) ->
-	ssl:send(Sock,Data);
-send(Sock,Data) ->
-	gen_tcp:send(Sock,Data).
-
-setopts({sslsocket,_,_}=Sock,Opts) ->
-	ssl:setopts(Sock,Opts);
-setopts(Sock,Opts) ->
-	inets:setopts(Sock,Opts).
+%% send({sslsocket,_,_} = Sock,Data) ->
+%% 	ssl:send(Sock,Data);
+%% send(Sock,Data) ->
+%% 	gen_tcp:send(Sock,Data).
+%% 
+%% setopts({sslsocket,_,_}=Sock,Opts) ->
+%% 	ssl:setopts(Sock,Opts);
+%% setopts(Sock,Opts) ->
+%% 	inets:setopts(Sock,Opts).
 
 %% proxylib:find_binary_pattern(<<"this is a string with a pattern in it">>,<<"with">>).
 

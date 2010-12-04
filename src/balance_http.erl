@@ -127,17 +127,6 @@ accept_http(wait,State) ->
 			{stop,normal,State}
 	end.
 
-http_balance(get_headers,State) ->
-	Sock = State#worker_state.client_sock,
-	ReqHdr = header_parse:get_headers(Sock,request),
-	ProxyPass = #proxy_pass{request=ReqHdr,proxy_type=ReqHdr#header_block.rstr},
-	{ok,Pid} = proxy_pass:start(ProxyPass),
-	gen_socket:controlling_process(Sock,Pid),
-	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
-	Pool = proplists:get_value(pool,State#worker_state.proplist,undefined),
-	gen_fsm:send_event(Pid,{balance,Pool,Port,Sock}),
-	{stop,normal,State}.
-
 accept_https({wait,ListenSock},State) ->
 %% 	io:format("~p accept_https(),~p",[?MODULE,State]),
 	case ssl:transport_accept(ListenSock) of
@@ -162,16 +151,36 @@ accept_https({wait,ListenSock},State) ->
 			{stop,normal,State}
 	end.
 
-%% https_balance(get_headers,State) ->
-%% 	{ok,Parse} = header_parse:start_link(),
-%% 	Sock = State#worker_state.client_sock,
-%% 	ProxyPass = header_parse:receive_ssl_headers(Parse,Sock),
-%% 	{ok,Pid} = proxy_pass:start(ProxyPass#proxy_pass{userinfo=balancer}),
-%% 	ssl:controlling_process(Sock,Pid),
-%% 	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
-%% 	Pool = proplists:get_value(pool,State#worker_state.proplist,undefined),
-%% 	gen_fsm:send_event(Pid,{balance,Pool,Port,Sock}),
-%% 	{stop,normal,State}.
+http_balance(get_headers,State) ->
+	Sock = State#worker_state.client_sock,
+	ReqHdr = header_parse:get_headers(Sock,request),
+	ProxyPass = #proxy_pass{request=ReqHdr,proxy_type=ReqHdr#header_block.rstr,config=State#worker_state.proplist},
+	{ok,Pid} = proxy_pass:start(ProxyPass),
+	gen_socket:controlling_process(Sock,Pid),
+	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
+	ProxyHost = 
+	case proplists:get_value(proxy_host,State#worker_state.proplist,undefined) of
+		undefined ->
+			case proplists:get_value(pool,State#worker_state.proplist,undefined) of
+				undefined ->
+					{error,enoaddr};
+				Pool ->
+					balancer:next(Pool)
+			end;
+		R ->
+			R
+	end,
+	case ProxyHost of
+		{_,_,_,_} = Addr ->
+			gen_fsm:send_event(Pid,{reverse_proxy,Sock,{host,Addr,Port}});
+		{Addr,BPort} ->
+			gen_fsm:send_event(Pid,{reverse_proxy,Sock,{host,Addr,BPort}});
+		_ ->
+			?ERROR_MSG("Invalid proxyhost: ~p~n",[ProxyHost]),
+			ErrMsg = io_lib:format("Error, bad balancer config.  No hosts found.",[]),
+			gen_fsm:send_event(self(),{error,503,"Balancer Error",lists:flatten(ErrMsg)})
+	end,
+	{stop,normal,State}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/3
