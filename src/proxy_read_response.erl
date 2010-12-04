@@ -15,7 +15,9 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--record(state,{parent,sock,headers,buff,size,bytes_sent,request}).
+-record(state,{parent,sock,headers,buff,size,bytes_sent,request,logdebug}).
+
+-define(LOGDEBUG(D,CMD) , if D -> CMD ; true -> ok end ).
 
 %%% This module takes ownership of the response stream and receives headers and a response body.  
 %%% It emits a message containing headers then a series of messages containing the response body.
@@ -77,8 +79,11 @@ init([State]) ->
 					case dict:find("transfer-encoding",Dict) of
 						{ok,"chunked"} ->
 							{ok,send_headers,State#state{size=chunked,bytes_sent=0}};
+						{ok,"hunked"} -> %% came up as unexpected transfer-encoding while browsing theonion.com turns on logdebug if hit again
+							?DEBUG_MSG("Hunked encoding?~n~p~n",[State]),
+							{ok,send_headers,State#state{size=chunked,bytes_sent=0,logdebug=true}};
 						Err ->
-							?INFO_MSG("Unexpected transfer-encoding or transfer-encoding not found: ~p~n",[Err]),
+							?ERROR_MSG("Unexpected transfer-encoding or transfer-encoding not found: ~p~n",[Err]),
 							{stop,error}
 					end
 			end;
@@ -91,7 +96,7 @@ send_headers(run,State) ->
 	erlang:send(State#state.parent,{response_header,State#state.headers,State#state.size}),
 	case State#state.size of
 		chunked ->
-%% 			?DEBUG_MSG("Starting in chunked mode.",[]),
+ 			?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Starting in chunked mode.",[])),
 			{next_state,read_chunked_response,State};
 		0 ->
 %% 			?DEBUG_MSG("No data to send.",[]),
@@ -142,12 +147,12 @@ read_chunked_response(check_data,State) when State#state.buff == <<>> ->
 			{stop,normal,State}
 	end;
 read_chunked_response(check_data,State) ->
-	?DEBUG_MSG("read_chunked_response(check_data,) with buff: ~p~n",[State#state.buff]),
+ 	?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("read_chunked_response(check_data,) with buff: ~p~n",[State#state.buff])),
 	case proxylib:find_binary_pattern(State#state.buff,<<"\r\n">>) of
 		nomatch ->
 			case gen_socket:recv(State#state.sock,0) of
 				{ok,Data} ->
-					?DEBUG_MSG("Received more after \"nomatch\"~n",[]),
+ 					?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Received more after \"nomatch\"~n",[])),
 					gen_fsm:send_event(self(),check_data),
 					Buff = State#state.buff,
 					{next_state,read_chunked_response,State#state{buff= <<Buff/binary,Data/binary>>}};
@@ -162,7 +167,7 @@ read_chunked_response(check_data,State) ->
 			{next_state,read_chunked_response,State#state{buff=Rest}};
 		Idx when Idx < 10 ->
 			<<LenStr:Idx/binary,"\r\n",Chunk/binary>> = State#state.buff,
-			Len = erlang:list_to_integer(binary_to_list(LenStr),16),
+			Len = erlang:list_to_integer(string:strip(binary_to_list(LenStr),both,($ ) ),16),
 %% 			?DEBUG_MSG("Index found: ~p ~p(hex) ~p",[Idx,LenStr,Len]),
 			case trunc(bit_size(Chunk)/8) of
 				_ when Len == 0 ->
@@ -174,12 +179,12 @@ read_chunked_response(check_data,State) ->
 					<<SendChunk:Len/binary,R/binary>> = Chunk,
 					BytesSent = CLen + State#state.bytes_sent, 
 					State#state.parent ! {response_data,SendChunk},
-%% 					?DEBUG_MSG("Got chunk:~n~p~n(~p)~n Leftover:~n~p~n",[SendChunk,trunc(bit_size(SendChunk)/8),R]),
+ 					?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Got chunk:~n~p~n(~p)~n Leftover:~n~p~n",[SendChunk,trunc(bit_size(SendChunk)/8),R])),
 					{next_state,read_chunked_response,State#state{buff=R,bytes_sent=BytesSent}};
 				_ ->
 					case gen_socket:recv(State#state.sock,0) of
 						{ok,Data} ->
-							?DEBUG_MSG("Received more after \"nomatch\"~n",[]),
+%% 							?DEBUG_MSG("Received more after \"nomatch\"~n",[]),
 							gen_fsm:send_event(self(),check_data),
 							Buff = State#state.buff,
 							{next_state,read_chunked_response,State#state{buff= <<Buff/binary,Data/binary>>}};

@@ -46,7 +46,9 @@ start(Args) ->
 %% init({balance,Pool}) ->
 	
 init(Args) ->
-    {ok, proxy_start, Args}.
+	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
+	FilterRef = filter_stream:init_filter_list(Filters),
+    {ok, proxy_start, Args#proxy_pass{filters=FilterRef}}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -241,6 +243,15 @@ server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State#proxy_pass{response=ResHdr,response_bytes_left=ResponseSize}};
+%% response_bytes_left == close when connection: close set for http/1.0 force chunk encoding
+server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_left == close ->
+	gen_socket:send(State#proxy_pass.client_sock,Data),
+	proxy_read_response:get_next(State#proxy_pass.response_driver),
+	{next_state,server_recv_11,State};
+server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == close ->
+	gen_socket:close(State#proxy_pass.server_sock),
+	gen_socket:close(State#proxy_pass.client_sock),
+	{stop,normal,State};
 server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_left == chunked ->
 %% 	?DEBUG_MSG("Got chunked {response_data,_}, send out as a chunk.~p~n",[self()]),
 	DataLen = list_to_binary(erlang:integer_to_list(trunc(bit_size(Data)/8),16)),
@@ -330,17 +341,23 @@ handle_sync_event(_Event, _From, StateName, StateData) ->
 % Data = binary()
 %
 % {end_response_data,ByteLength}
-handle_info({response_header,_,_}=I,StateName,StateData) ->
+handle_info({response_header,_,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Got response header in state ~p~n",[StateName]),
+	I = filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters),
 	gen_fsm:send_event(self(),I),
 	{next_state, StateName, StateData};
-handle_info({response_data,_}=I,StateName,StateData) ->
+handle_info({response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
+	I = filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters),
 	gen_fsm:send_event(self(),I),
 	{next_state, StateName, StateData};
-handle_info({end_response_data,_}=I,StateName,StateData) ->
+handle_info({end_response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
+	I = filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters),
 	gen_fsm:send_event(self(),I),
+	{next_state, StateName, StateData};
+handle_info({filter_delay,Data},StateName,StateData) ->
+	gen_fsm:send_event(self(),Data),
 	{next_state, StateName, StateData};
 handle_info(Info, StateName, StateData) ->
 	?ERROR_MSG("Unmatched info: ~p~n",[Info]),
