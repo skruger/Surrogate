@@ -13,6 +13,7 @@
 %%
 -export([process_hook/3, start_instance/0]).
 
+-behaviour(filter_stream).
 %%
 %% API Functions
 %%
