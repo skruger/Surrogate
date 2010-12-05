@@ -22,14 +22,22 @@ start_instance() -> {?MODULE,?MODULE}.
 
 process_hook(_,response,{response_header,_,chunked}=Data) ->
 	Data;
-process_hook(_,response,{response_header,Hdr,_Length}) ->
-	case (Hdr#header_block.response)#response_rec.protocol of
-		"HTTP/1.1" ->
-			NewHeaders = Hdr#header_block.headers ++ ["Transfer-Encoding: chunked"],
-			{response_header,Hdr#header_block{headers=NewHeaders},chunked};
-		"HTTP/1.0" ->
-			NewHeaders = Hdr#header_block.headers ++ ["Connection: close"],
-			{response_header,Hdr#header_block{headers=NewHeaders},close}
+process_hook(_,response,{response_header,_,0}=Header) ->
+	Header;
+process_hook(_,response,{response_header,Hdr,_Length}=Header) ->
+	Dict = proxylib:header2dict(Hdr#header_block.headers),
+	case dict:find("content-length",Dict) of
+		{ok,_} ->
+			case (Hdr#header_block.response)#response_rec.protocol of
+				"HTTP/1.1" ->
+					NewHeaders = proxylib:replace_header("content-length","Transfer-Encoding: chunked",Hdr#header_block.headers),
+					{response_header,Hdr#header_block{headers=NewHeaders},chunked};
+				"HTTP/1.0" ->
+					NewHeaders = Hdr#header_block.headers ++ ["Connection: close"],
+					{response_header,Hdr#header_block{headers=NewHeaders},close}
+			end;
+		_ -> 
+			Header
 	end;
 process_hook(_,_,Data) ->
 	Data.

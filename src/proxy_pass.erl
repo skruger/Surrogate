@@ -88,23 +88,30 @@ proxy_start({error,_,_,_}=Err,State) ->
 %% 	end.
 
 proxy_client_read(get_headers,State0) ->
-	ReqHdr0 = header_parse:get_headers(State0#proxy_pass.client_sock,request),
-	Via = io_lib:format("Via: ~s ~s (Surrogate)",[(ReqHdr0#header_block.request)#request_rec.protocol,net_adm:localhost()]),
-	ReqHdr = ReqHdr0#header_block{headers=proxylib:append_header(lists:flatten(Via),ReqHdr0#header_block.headers)},
-	State = State0#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype},
-%% 	case proxyconf:get(proxy_auth,false) of
-	case proplists:get_value(proxy_auth,State#proxy_pass.config,false) of
-		false ->
-%% 			io:format("No auth.~n"),
-			gen_fsm:send_event(self(),start),
-			{next_state,proxy_connect,State};
-		_AuthCfg when State#proxy_pass.userinfo =/= undefined ->
-%% 			io:format("Already had auth: ~p~n",[State#proxy_pass.userinfo]),
-			gen_fsm:send_event(self(),start),
-			{next_state,proxy_connect,State};
-		AuthCfg ->
-			gen_fsm:send_event(self(),{check_auth,AuthCfg}),
-			{next_state,proxy_auth,State}
+	try
+		ReqHdr0 = header_parse:get_headers(State0#proxy_pass.client_sock,request),
+		Via = io_lib:format("Via: ~s ~s (Surrogate)",[(ReqHdr0#header_block.request)#request_rec.protocol,net_adm:localhost()]),
+		ReqHdr = ReqHdr0#header_block{headers=proxylib:append_header(lists:flatten(Via),ReqHdr0#header_block.headers)},
+		State = State0#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype},
+	%% 	case proxyconf:get(proxy_auth,false) of
+		case proplists:get_value(proxy_auth,State#proxy_pass.config,false) of
+			false ->
+	%% 			io:format("No auth.~n"),
+				gen_fsm:send_event(self(),start),
+				{next_state,proxy_connect,State};
+			_AuthCfg when State#proxy_pass.userinfo =/= undefined ->
+	%% 			io:format("Already had auth: ~p~n",[State#proxy_pass.userinfo]),
+				gen_fsm:send_event(self(),start),
+				{next_state,proxy_connect,State};
+			AuthCfg ->
+				gen_fsm:send_event(self(),{check_auth,AuthCfg}),
+				{next_state,proxy_auth,State}
+		end
+	catch
+		_:{error,closed} -> {stop,normal,State0};
+		_:Err ->
+			?ERROR_MSG("Error receiving headers: ~p (Keepalive: ~p)~n",[Err,State0#proxy_pass.keepalive]),
+			{stop,normal,State0}
 	end.
 
 proxy_auth({check_auth,_AuthCfg},State) ->
@@ -300,8 +307,13 @@ proxy_finish(next,State) ->
 %% 	gen_socket:close(State#proxy_pass.client_sock),
 %% 	{stop,normal,State}.
 	case dict:find("proxy-connection",Dict) of
+		{ok,"keep-alive"} when State#proxy_pass.keepalive >= 10 ->
+			?DEBUG_MSG("Proxy-Connection: keep-alive Closing (~p)~n",[State#proxy_pass.keepalive]),
+			gen_socket:close(State#proxy_pass.server_sock),
+			gen_socket:close(State#proxy_pass.client_sock),
+			{stop,normal,State};
 		{ok,"keep-alive"} ->
-			?DEBUG_MSG("Proxy-Connection: keep-alive (~p)~n",[State#proxy_pass.keepalive]),
+%% 			?DEBUG_MSG("Proxy-Connection: keep-alive (~p)~n",[State#proxy_pass.keepalive]),
 			gen_fsm:send_event(self(),get_headers),
 			gen_socket:close(State#proxy_pass.server_sock),
 			{next_state,proxy_client_read,State#proxy_pass{server_sock=undefined,keepalive=State#proxy_pass.keepalive+1}};
