@@ -132,10 +132,9 @@ proxy_auth({check_auth,_AuthCfg},State) ->
 						{ok,UserInfo} ->
 %% 							io:format("User: ~p, Pass: ~p ok~n",[User,Pass]),
 							gen_fsm:send_event(self(),start),
-							Hdr = proxylib:remove_header("proxy-authorization",(State#proxy_pass.request)#header_block.headers),
 %% 							Hdr = proxylib:replace_header("proxy-authorization","Proxy-Authorization: none",(State#proxy_pass.request)#header_block.headers),
-							Request = (State#proxy_pass.request)#header_block{headers=Hdr},
-							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo,request=Request}};
+%% 							Request = (State#proxy_pass.request)#header_block{headers=Hdr},
+							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo}};
 						Err ->
 							?ERROR_MSG("Authentication error for ~p: ~p (~p)~n",[User,Err,Pass]),
 							gen_fsm:send_event(self(),send_challenge),
@@ -211,7 +210,11 @@ proxy_connect(open_socket,State) ->
 							
 
 client_send({headers,Hdr},State) ->
-	HBlock = proxylib:combine_headers(Hdr),
+	Hdr0 = proxylib:remove_header("proxy-authorization",Hdr),
+	Hdr1 = proxylib:remove_header("proxy-connection",Hdr0),
+	Hdr2 = proxylib:remove_header("keep-alive",Hdr1),
+	Hdr3 = proxylib:remove_header("accept-encoding",Hdr2),
+	HBlock = proxylib:combine_headers(Hdr3),
 	Req = (State#proxy_pass.request)#header_block.request,
 %% 	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,"HTTP/1.0",HBlock])),
 	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol,HBlock])),
@@ -259,6 +262,7 @@ server_recv_11(response,State) ->
 			{next_state,proxy_error,State}
 	end;
 server_recv_11({response_header,ResHdr,ResponseSize},State) ->
+	?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr),
 %% 	?DEBUG_MSG("Got response_header (~p).~n",[self()]),
 	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(ResHdr#header_block.headers)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
@@ -270,11 +274,9 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
 server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == close ->
-%% 	gen_socket:close(State#proxy_pass.server_sock),
-%% 	gen_socket:close(State#proxy_pass.client_sock),
-%% 	{stop,normal,State};
-	gen_fsm:send_event(self(),next),
-	{next_state,proxy_finish,State};
+	gen_socket:close(State#proxy_pass.server_sock),
+	gen_socket:close(State#proxy_pass.client_sock),
+	{stop,normal,State};
 server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_left == chunked ->
 %% 	?DEBUG_MSG("Got chunked {response_data,_}, send out as a chunk.~p~n",[self()]),
 	DataLen = list_to_binary(erlang:integer_to_list(trunc(bit_size(Data)/8),16)),

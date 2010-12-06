@@ -79,9 +79,6 @@ init([State]) ->
 					case dict:find("transfer-encoding",Dict) of
 						{ok,"chunked"} ->
 							{ok,send_headers,State#state{size=chunked,bytes_sent=0}};
-						{ok,"hunked"} -> %% came up as unexpected transfer-encoding while browsing theonion.com turns on logdebug if hit again
-							?DEBUG_MSG("Hunked encoding?~n~p~n",[State]),
-							{ok,send_headers,State#state{size=chunked,bytes_sent=0,logdebug=true}};
 						Err ->
 							?ERROR_MSG("Unexpected transfer-encoding or transfer-encoding not found: ~p~n",[Err]),
 							{stop,error}
@@ -115,7 +112,7 @@ send_headers(run,State) ->
 
 read_response(check_data,State) when State#state.bytes_sent >= State#state.size ->
 	try gen_socket:recv(State#state.sock,0,10) % read and throw away last data (probably 0\r\n\r\n)
-	catch _:_ -> ok ; _ -> ok
+	catch _:_ -> ok
 	end,
 	State#state.parent ! {end_response_data,State#state.bytes_sent},
 	gen_socket:controlling_process(State#state.sock,State#state.parent),

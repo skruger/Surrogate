@@ -33,9 +33,10 @@ process_hook(_,response,{response_header,Hdr,_Length}=Header) ->
 					NewHeaders = proxylib:replace_header("content-length","Transfer-Encoding: chunked",Hdr#header_block.headers),
 					{response_header,Hdr#header_block{headers=NewHeaders},chunked};
 				"HTTP/1.0" ->
-					NewHeaders0 = proxylib:replace_header("connection","Connection: close",Hdr#header_block.headers),
-					NewHeaders = proxylib:remove_header("content-length",NewHeaders0#header_block.headers),
-					{response_header,Hdr#header_block{headers=NewHeaders},close}
+					NewHeaders0 = proxylib:remove_header("connection",Hdr#header_block.headers),
+					NewHeaders1 = proxylib:remove_header("content-length",NewHeaders0),
+					NewHeaders2 = proxylib:append_header("Connection: close",NewHeaders1),
+					{response_header,Hdr#header_block{headers=NewHeaders2},close}
 			end;
 		_ -> 
 			Header
