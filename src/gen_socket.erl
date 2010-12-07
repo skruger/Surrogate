@@ -14,7 +14,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([create/2,send/2,recv/2,recv/3,setopts/2,getopts/1,close/1,controlling_process/2]).
+-export([create/2,send/2,recv/2,recv/3,setopts/2,getopts/2,close/1,controlling_process/2,peername/1,info/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -42,8 +42,8 @@ controlling_process({?MODULE,Sock},Pid) ->
 setopts({?MODULE,Sock},Options) ->
 	gen_server:call(Sock,{setopts,Options}).
 
-getopts({?MODULE,Sock}) ->
-	gen_server:call(Sock,{getopts}).
+getopts({?MODULE,Sock},OptName) ->
+	gen_server:call(Sock,{getopts,OptName}).
 
 send({?MODULE,Sock},Packet) ->
 	gen_server:call(Sock,{send,Packet}).
@@ -56,6 +56,12 @@ recv({?MODULE,Sock},Length,Timeout) ->
 
 close({?MODULE,Sock}) ->
 	gen_server:call(Sock,{close}).
+
+peername({?MODULE,Sock}) ->
+	gen_server:call(Sock,{peername}).
+
+info({?MODULE,Sock}) ->
+	gen_server:call(Sock,info).
 
 %% ====================================================================
 %% Server functions
@@ -82,6 +88,9 @@ init([Socket,Type,Pid]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_call(info,From,State) ->
+	?INFO_MSG("Socket info requested by ~p~n~p~n",[From,State]),
+	{reply,State,State};
 handle_call({controlling_process,Pid},_From,State) when is_pid(Pid) ->
 	{reply,ok,State#state{controlling_process=Pid}};
 %% handle_call(R,From,State) when State#state.controlling_process /= From ->
@@ -90,14 +99,17 @@ handle_call({controlling_process,Pid},_From,State) when is_pid(Pid) ->
 handle_call({setopts,Opt},_From,State) when State#state.type == ssl ->
 	R = ssl:setopts(State#state.socket,Opt),
 	{reply,R,State};
-handle_call({getopts},_From,State) when State#state.type == ssl ->
-	R = ssl:getopts(State#state.socket),
+handle_call({getopts,Opt},_From,State) when State#state.type == ssl ->
+	R = ssl:getopts(State#state.socket,Opt),
 	{reply,R,State};
 handle_call({send,Packet},_From,State) when State#state.type == ssl ->
 	R = ssl:send(State#state.socket,Packet),
 	{reply,R,State};
 handle_call({recv,Len,Timeout},_From,State) when State#state.type == ssl ->
 	R = ssl:recv(State#state.socket,Len,Timeout),
+	{reply,R,State};
+handle_call({peername},_From,State) when State#state.type == ssl ->
+	R = ssl:peername(State#state.socket),
 	{reply,R,State};
 handle_call({close},_From,State) when State#state.type == ssl ->
 	R = ssl:close(State#state.socket),
@@ -106,14 +118,17 @@ handle_call({close},_From,State) when State#state.type == ssl ->
 handle_call({setopts,Opt},_From,State) when State#state.type == gen_tcp ->
 	R = inet:setopts(State#state.socket,Opt),
 	{reply,R,State};
-handle_call({getopts},_From,State) when State#state.type == gen_tcp ->
-	R = inet:getopts(State#state.socket),
+handle_call({getopts,Opt},_From,State) when State#state.type == gen_tcp ->
+	R = inet:getopts(State#state.socket,Opt),
 	{reply,R,State};
 handle_call({send,Packet},_From,State) when State#state.type == gen_tcp ->
 	R = gen_tcp:send(State#state.socket,Packet),
 	{reply,R,State};
 handle_call({recv,Len,Timeout},_From,State) when State#state.type == gen_tcp ->
 	R = gen_tcp:recv(State#state.socket,Len,Timeout),
+	{reply,R,State};
+handle_call({peername},_From,State) when State#state.type == gen_tcp ->
+	R = inet:peername(State#state.socket),
 	{reply,R,State};
 handle_call({close},_From,State) when State#state.type == gen_tcp ->
 	R = gen_tcp:close(State#state.socket),

@@ -21,7 +21,9 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--export([proxy_start/2,proxy_client_read/2,proxy_auth/2,proxy_connect/2,client_send/2,server_recv_11/2,proxy_error/2,proxy_finish/2]).
+-export([proxy_start/2,client_send_11/2,server_recv_11/2,proxy_error/2,proxy_finish/2]).
+
+%% ,proxy_auth/2,proxy_client_read/2,proxy_connect/2,client_send/2
 
 %% -define(LOG(N,P),lists:flatten(io_lib:format(~p)
 
@@ -57,108 +59,81 @@ init(Args) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 proxy_start({socket,CSock},State) ->
-	gen_fsm:send_event(self(),get_headers),
-	{next_state,proxy_client_read,State#proxy_pass{client_sock=CSock}};
-proxy_start({reverse_proxy,CSock,{host,Host,Port}=_Addr}=_L,State) ->
-%% 	io:format("proxy_start() ~p~n",[L]),
-	case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],60000) of
-		{ok,SSock0} ->
-			{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-			gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
-			{next_state,client_send,State#proxy_pass{client_sock=CSock,server_sock=SSock}};
-		Err ->
-			?INFO_MSG("reverse_proxy connect() error: ~p~n",[Err]),
-			{stop,normal,State}
-	end;
-%% Used by load balancer to display error pages.
+	gen_fsm:send_event(self(),request),
+%% 	?DEBUG_MSG("peername: ~p~n",[gen_socket:peername(CSock)]),
+	{next_state,client_send_11,State#proxy_pass{client_sock=CSock}};
+proxy_start({reverse_proxy,CSock,{host,_Host,_Port}=Addr}=_L,State) ->
+	gen_fsm:send_event(self(),request),
+	{next_state,client_send_11,State#proxy_pass{client_sock=CSock,reverse_proxy_host=Addr}};
 proxy_start({error,_,_,_}=Err,State) ->
 	gen_fsm:send_event(self(),Err),
 	{next_state,proxy_error,State}.
-%% proxy_start({balance,Pool,Port,Sock}=_L,State) ->
-%% %% 	io:format("Starting balancer: ~p~n",[L]),
-%% 	case balancer:next(Pool) of
-%% 		{IP,OPort} ->
-%% 			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,OPort}}),
-%% 			{next_state,proxy_start,State};
-%% 		{_,_,_,_} = IP ->
-%% 			gen_fsm:send_event(self(),{reverse_proxy,Sock,{host,IP,Port}}),
-%% 			{next_state,proxy_start,State};
-%% 		_ ->
-%% 			{stop,normal,State}
-%% 	end.
 
-proxy_client_read(get_headers,State0) ->
+%% proxy_auth({check_auth,_AuthCfg},State) ->
+%% %% 	?DEBUG_MSG("Check auth: ~p~n",[AuthCfg]),
+%% 	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
+%% 	case dict:find("proxy-authorization",Dict) of
+%% 		{ok,"Basic "++AuthStr} ->
+%% 			Auth2 = binary_to_list(base64:decode(AuthStr)),
+%% 			case string:chr(Auth2,$:) of
+%% 				0 ->
+%% 					gen_fsm:send_event(self(),send_challenge),
+%% 					{next_state,proxy_auth,State};
+%% 				Idx ->
+%% 					User = string:substr(Auth2,1,Idx-1),
+%% 					Pass = string:substr(Auth2,Idx+1),
+%% 					
+%% 					case proxy_auth:check_user(User,Pass) of
+%% 						{ok,UserInfo} ->
+%% %% 							io:format("User: ~p, Pass: ~p ok~n",[User,Pass]),
+%% 							gen_fsm:send_event(self(),start),
+%% %% 							Hdr = proxylib:replace_header("proxy-authorization","Proxy-Authorization: none",(State#proxy_pass.request)#header_block.headers),
+%% %% 							Request = (State#proxy_pass.request)#header_block{headers=Hdr},
+%% 							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo}};
+%% 						Err ->
+%% 							?ERROR_MSG("Authentication error for ~p: ~p (~p)~n",[User,Err,Pass]),
+%% 							gen_fsm:send_event(self(),send_challenge),
+%% 							{next_state,proxy_auth,State}
+%% 					end
+%% 			end;
+%% 		_Err ->
+%% %% 			io:format("No auth: ~p~n",[Err]),
+%% 			gen_fsm:send_event(self(),send_challenge),
+%% 			{next_state,proxy_auth,State}
+%% 	end;
+%% proxy_auth(send_challenge,State) ->
+%% %% 	io:format("Sending auth challenge~n"),
+%% 	AuthReq = "HTTP/1.1 407 Proxy Auth\r\nProxy-Authenticate: Basic realm=\"FastProxy2\"\r\nConnection: close\r\n\r\n",
+%% 	?ACCESS_LOG(407,(State#proxy_pass.request)#header_block.rstr,"nouser","Proxy authorization request."),
+%% 	gen_socket:send(State#proxy_pass.client_sock,AuthReq),
+%% 	gen_socket:close(State#proxy_pass.client_sock),
+%% 	{stop,normal,State}.
+
+client_send_11(request,State) ->
 	try
-		ReqHdr0 = header_parse:get_headers(State0#proxy_pass.client_sock,request),
-		Via = io_lib:format("Via: ~s ~s (Surrogate)",[(ReqHdr0#header_block.request)#request_rec.protocol,net_adm:localhost()]),
-		ReqHdr = ReqHdr0#header_block{headers=proxylib:append_header(lists:flatten(Via),ReqHdr0#header_block.headers)},
-		State = State0#proxy_pass{request=ReqHdr,proxy_type=(ReqHdr#header_block.request)#request_rec.proxytype},
-	%% 	case proxyconf:get(proxy_auth,false) of
-		case proplists:get_value(proxy_auth,State#proxy_pass.config,false) of
-			false ->
-	%% 			io:format("No auth.~n"),
-				gen_fsm:send_event(self(),start),
-				{next_state,proxy_connect,State};
-			_AuthCfg when State#proxy_pass.userinfo =/= undefined ->
-	%% 			io:format("Already had auth: ~p~n",[State#proxy_pass.userinfo]),
-				gen_fsm:send_event(self(),start),
-				{next_state,proxy_connect,State};
-			AuthCfg ->
-				gen_fsm:send_event(self(),{check_auth,AuthCfg}),
-				{next_state,proxy_auth,State}
+		case proxy_read_request:start(State#proxy_pass.client_sock) of
+			{proxy_read_request,_} = RDrv ->
+				{next_state,client_send_11,State#proxy_pass{request_driver=RDrv}};
+			Err ->
+				?ERROR_MSG("Error starting proxy_read_request: ~p~n",[Err]),
+				EMsg = io_lib:format("Internal proxy error: ~p",[Err]),
+				gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+				{next_state,proxy_error,State}
 		end
-	catch
-		_:{error,closed} -> {stop,normal,State0};
-		_:Err ->
-			?ERROR_MSG("Error receiving headers: ~p (Keepalive: ~p)~n",[Err,State0#proxy_pass.keepalive]),
-			{stop,normal,State0}
-	end.
-
-proxy_auth({check_auth,_AuthCfg},State) ->
-%% 	?DEBUG_MSG("Check auth: ~p~n",[AuthCfg]),
-	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
-	case dict:find("proxy-authorization",Dict) of
-		{ok,"Basic "++AuthStr} ->
-			Auth2 = binary_to_list(base64:decode(AuthStr)),
-			case string:chr(Auth2,$:) of
-				0 ->
-					gen_fsm:send_event(self(),send_challenge),
-					{next_state,proxy_auth,State};
-				Idx ->
-					User = string:substr(Auth2,1,Idx-1),
-					Pass = string:substr(Auth2,Idx+1),
-					
-					case proxy_auth:check_user(User,Pass) of
-						{ok,UserInfo} ->
-%% 							io:format("User: ~p, Pass: ~p ok~n",[User,Pass]),
-							gen_fsm:send_event(self(),start),
-%% 							Hdr = proxylib:replace_header("proxy-authorization","Proxy-Authorization: none",(State#proxy_pass.request)#header_block.headers),
-%% 							Request = (State#proxy_pass.request)#header_block{headers=Hdr},
-							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo}};
-						Err ->
-							?ERROR_MSG("Authentication error for ~p: ~p (~p)~n",[User,Err,Pass]),
-							gen_fsm:send_event(self(),send_challenge),
-							{next_state,proxy_auth,State}
-					end
-			end;
-		_Err ->
-%% 			io:format("No auth: ~p~n",[Err]),
-			gen_fsm:send_event(self(),send_challenge),
-			{next_state,proxy_auth,State}
+ 	catch
+ 		_:{error,closed} -> {stop,normal,State};
+ 		_:ErrCatch ->
+ 			?ERROR_MSG("Error receiving headers: ~p (Keepalive: ~p)~n",[ErrCatch,State#proxy_pass.keepalive]),
+ 			{stop,normal,State}
 	end;
-proxy_auth(send_challenge,State) ->
-%% 	io:format("Sending auth challenge~n"),
-	AuthReq = "HTTP/1.1 407 Proxy Auth\r\nProxy-Authenticate: Basic realm=\"FastProxy2\"\r\nConnection: close\r\n\r\n",
-	?ACCESS_LOG(407,(State#proxy_pass.request)#header_block.rstr,"nouser","Proxy authorization request."),
-	gen_socket:send(State#proxy_pass.client_sock,AuthReq),
-	gen_socket:close(State#proxy_pass.client_sock),
-	{stop,normal,State}.
-
-
-proxy_connect(start,State) ->
-	case (State#proxy_pass.request)#header_block.request of
+client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
+	State = State0#proxy_pass{request=ReqHdr},
+%% 	?DEBUG_MSG("request_header: ~p~n",[R]),
+	case ReqHdr#header_block.request of
 		#request_rec{method="CONNECT"} ->
-%% 			io:format("Post authentication CONNECT~n"),
+			proxy_read_request:stop(State#proxy_pass.request_driver),
+			gen_socket:info(State#proxy_pass.client_sock),
+%% 			?DEBUG_MSG("Connect: ~p~n",[ReqHdr]),
 			case proxy_connect:http_connect(State) of
 				ok ->
 					?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,"Connection Established"),
@@ -168,87 +143,57 @@ proxy_connect(start,State) ->
 					{next_state,proxy_error,State}
 			end;
 		_ ->
-			gen_fsm:send_event(self(),open_socket),
-			{next_state,proxy_connect,State}
+			gen_fsm:send_event(self(),connect_server),
+			{next_state,client_send_11,State}
 	end;
-proxy_connect(open_socket,State) when State#proxy_pass.server_sock == undefined ->
+client_send_11(connect_server,State) ->
 	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
-	case dict:find("host",Dict) of
-		{ok,HostStr} ->
-			{host,Host,Port} = proxylib:parse_host(HostStr,80),
-			FList = proplists:get_value(proxy_filters,State#proxy_pass.config,[]),
-			case filter_check:host(FList,Host,State#proxy_pass.userinfo) of
-				deny ->
-					EMsg = io_lib:format("Deny by rule for host: ~p~n<br/>Hdr: ~p~n",[Host,(State#proxy_pass.request)#header_block.headers]),
-					gen_fsm:send_event(self(),{error,403,"Forbidden",lists:flatten(EMsg)}),
-					{next_state,proxy_error,State};
-				_Ok ->
-					case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
-						{ok,SSock0} ->
-							{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-							gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
-							{next_state,client_send,State#proxy_pass{server_sock=SSock}};
-						
-						{error,ErrStat} = Err ->
-							?DEBUG_MSG("~p connect() error: ~p~n~p~n",[?MODULE,Err,HostStr]),
-							gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p ~p",[HostStr,ErrStat]))}),
-							{next_state,proxy_error,State}
-					end
+	ReqHdr = State#proxy_pass.request,
+	Via = io_lib:format("Via: ~s ~s (Surrogate)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost()]),
+	Hdr0 = proxylib:append_header(Via, ReqHdr#header_block.headers),
+	Hdr = proxylib:remove_headers(["accept-encoding","keep-alive","proxy-connection","proxy-authorization"],Hdr0),
+	RequestHeaders = [[ReqHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(Hdr)],
+	ConnHost = 
+	case State#proxy_pass.reverse_proxy_host of
+		{host,_Host,_Port} = H -> H;
+		_ ->
+			case dict:find("host",Dict) of
+				{ok,HostStr} ->
+					proxylib:parse_host(HostStr,80);
+				EHost -> EHost
+			end
+
+	end,
+	case ConnHost of
+		{host,Host,Port} ->
+			case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
+				{ok,SSock0} ->
+					{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
+					gen_socket:send(SSock,RequestHeaders),
+					proxy_read_request:get_next(State#proxy_pass.request_driver),
+					{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
+				ErrConn ->
+					?ERROR_MSG("Could not Connect to backend server: ~p ~p~n",[ConnHost,ErrConn]),
+					EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
+					gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+					{next_state,proxy_error,State}
 			end;
-		_Err ->
-			?INFO_MSG("Didn't receive a host header: ~p~n",[dict:to_list(Dict)]),
-			gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("No host header received from client",[]))}),
+		Err ->
+			?ERROR_MSG("Could not determine backend server: ~p~n",[Err]),
+			EMsg = io_lib:format("Internal proxy error: ~p",[Err]),
+			gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
 			{next_state,proxy_error,State}
 	end;
-proxy_connect(open_socket,State) ->
-	?DEBUG_MSG("Socket already open (keep alive)~n",[]),
-	gen_fsm:send_event(self(),{headers,(State#proxy_pass.request)#header_block.headers}),
-	{next_state,client_send,State}.
-	
-
-
-							
-
-client_send({headers,Hdr},State) ->
-	Hdr0 = proxylib:remove_header("proxy-authorization",Hdr),
-	Hdr1 = proxylib:remove_header("proxy-connection",Hdr0),
-	Hdr2 = proxylib:remove_header("keep-alive",Hdr1),
-	Hdr3 = proxylib:remove_header("accept-encoding",Hdr2),
-	HBlock = proxylib:combine_headers(Hdr3),
-	Req = (State#proxy_pass.request)#header_block.request,
-%% 	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,"HTTP/1.0",HBlock])),
-	RequestText = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol,HBlock])),
-	gen_socket:send(State#proxy_pass.server_sock,RequestText),
-	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
-	case dict:find("content-length",Dict) of
-		{ok,Length} ->
-			{Len,_} = string:to_integer(Length),
-			gen_fsm:send_event(self(),{request_body,Len}),
-			{next_state,client_send,State};
-		_ ->
-			gen_fsm:send_event(self(),response),
-			{next_state,server_recv_11,State}
-	end;		
-client_send({request_body,Len},State) when Len < 1 ->
+client_send_11({request_data,Data},State) ->
+	gen_socket:send(State#proxy_pass.server_sock,Data),
+	{next_state,client_send_11,State};
+client_send_11({end_request_data,_Size},State) ->
 	gen_fsm:send_event(self(),response),
 	{next_state,server_recv_11,State};
-client_send({request_body,Len},State) when (State#proxy_pass.request)#header_block.body /= <<>> ->
-	gen_socket:send(State#proxy_pass.server_sock,(State#proxy_pass.request)#header_block.body),
-	gen_fsm:send_event(self(),{request_body,Len-trunc(bit_size((State#proxy_pass.request)#header_block.body)/8)}),
-	NewReq = (State#proxy_pass.request)#header_block{body = <<>>},
-	{next_state,client_send,State#proxy_pass{request =  NewReq} };
-client_send({request_body,Len},State) ->
- 	case gen_socket:recv(State#proxy_pass.client_sock,0,500) of
-		{ok,Packet} ->
-			gen_socket:send(State#proxy_pass.server_sock,Packet),
-			gen_fsm:send_event(self(),{request_body,Len-trunc(bit_size(Packet)/8)}),
-			{next_state,client_send,State};
-		{error,Reason} ->
-			?INFO_MSG("Error reading client socket: ~p~n",[Reason]),
-			gen_fsm:send_event(self(),response),
-			{next_state,server_recv_11,State}
-	end.
-
+client_send_11(Extra,State) ->
+	?ERROR_MSG("Extra data in client_send_11: ~p~n",[Extra]),
+	{stop,normal,State}.
+	
 
 server_recv_11(response,State) ->
 %% 	?DEBUG_MSG("Staring proxy_read_response (~p)~n",[self()]),
@@ -316,9 +261,9 @@ proxy_finish(next,State) ->
 			{stop,normal,State};
 		{ok,"keep-alive"} ->
 %% 			?DEBUG_MSG("Proxy-Connection: keep-alive (~p)~n",[State#proxy_pass.keepalive]),
-			gen_fsm:send_event(self(),get_headers),
+			gen_fsm:send_event(self(),request),
 			gen_socket:close(State#proxy_pass.server_sock),
-			{next_state,proxy_client_read,State#proxy_pass{server_sock=undefined,keepalive=State#proxy_pass.keepalive+1}};
+			{next_state,client_send_11,State#proxy_pass{server_sock=undefined,keepalive=State#proxy_pass.keepalive+1}};
 		{ok,"close"} ->
 			gen_socket:close(State#proxy_pass.server_sock),
 			gen_socket:close(State#proxy_pass.client_sock),
@@ -398,20 +343,47 @@ handle_sync_event(_Event, _From, StateName, StateData) ->
 % Data = binary()
 %
 % {end_response_data,ByteLength}
+handle_info({request_header,_,_}=Dat,StateName,StateData) ->
+%% 	?DEBUG_MSG("Got request header in state ~p~n",[StateName]),
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+		delay -> ok;
+		I -> gen_fsm:send_event(self(),I)
+	end,
+	{next_state, StateName, StateData};
+handle_info({request_data,_}=Dat,StateName,StateData) ->
+%% 	?DEBUG_MSG("Sending event: {request_data,_} in state ~p~n",[StateName]),
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+		delay -> ok;
+		I -> gen_fsm:send_event(self(),I)
+	end,
+	{next_state, StateName, StateData};
+handle_info({end_request_data,_}=Dat,StateName,StateData) ->
+%% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+		delay -> ok;
+		I -> gen_fsm:send_event(self(),I)
+	end,
+	{next_state, StateName, StateData};
 handle_info({response_header,_,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Got response header in state ~p~n",[StateName]),
-	I = filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters),
-	gen_fsm:send_event(self(),I),
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+		delay -> ok;
+		I -> gen_fsm:send_event(self(),I)
+	end,
 	{next_state, StateName, StateData};
 handle_info({response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
-	I = filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters),
-	gen_fsm:send_event(self(),I),
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+		delay -> ok;
+		I -> gen_fsm:send_event(self(),I)
+	end,
 	{next_state, StateName, StateData};
 handle_info({end_response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
-	I = filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters),
-	gen_fsm:send_event(self(),I),
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+		delay -> ok;
+		I -> gen_fsm:send_event(self(),I)
+	end,
 	{next_state, StateName, StateData};
 handle_info({filter_delay,Data},StateName,StateData) ->
 	gen_fsm:send_event(self(),Data),

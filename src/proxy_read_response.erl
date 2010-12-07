@@ -90,7 +90,7 @@ init([State]) ->
 
 send_headers(run,State) ->
 %% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
-	erlang:send(State#state.parent,{response_header,State#state.headers,State#state.size}),
+	State#state.parent ! {response_header,State#state.headers,State#state.size},
 	case State#state.size of
 		chunked ->
  			?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Starting in chunked mode.",[])),
@@ -111,9 +111,6 @@ send_headers(run,State) ->
 		
 
 read_response(check_data,State) when State#state.bytes_sent >= State#state.size ->
-	try gen_socket:recv(State#state.sock,0,10) % read and throw away last data (probably 0\r\n\r\n)
-	catch _:_ -> ok
-	end,
 	State#state.parent ! {end_response_data,State#state.bytes_sent},
 	gen_socket:controlling_process(State#state.sock,State#state.parent),
 	{stop,normal,State};

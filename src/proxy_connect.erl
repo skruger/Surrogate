@@ -35,13 +35,15 @@ http_connect(ProxyPass) ->
 			gen_fsm:send_event(self(),{error,403,"Forbidden",lists:flatten(EMsg)}),
 			{error,filter_block};
 		_Ok ->
+%% 			?DEBUG_MSG("http_connect() filter pass.~n",[]),
 			case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
 				{ok,SvrSock0} ->
+					?DEBUG_MSG("http_connect() ~p connected:~p~n",[self(),SvrSock0]),
 					{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
 					ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
 					ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
-					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
 					gen_socket:controlling_process(SvrSock,ServerPid),
+					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
 					gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
 					ServerPid ! {client,ClientPid},
 					ClientPid ! {server,ServerPid},
@@ -160,7 +162,10 @@ client_loop(Sock,SvrPid) ->
 			ok;
 		{gen_socket_error,Sock,Reason} ->
 			?DEBUG_MSG("Socket closed: ~p~n",[Reason]),
-			SvrPid ! client_closed
+			SvrPid ! client_closed;
+		Other ->
+			?ERROR_MSG("Unexpected data in client_loop(): ~p~n",[Other]),
+			client_loop(Sock,SvrPid)
 	end.
 		
 server_loop(ServerSock,ClientPid) when ClientPid == undefined ->
@@ -188,6 +193,9 @@ server_loop(Sock,CliPid) ->
 			ok;
 		{gen_socket_error,Sock,Reason} ->
 			?DEBUG_MSG("Server socket closed: ~p~n",[Reason]),
-			CliPid ! server_closed
+			CliPid ! server_closed;
+		Other ->
+			?ERROR_MSG("Unexpected data in server_loop(): ~p~n",[Other]),
+			server_loop(Sock,CliPid)
 	end.
 

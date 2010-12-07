@@ -27,6 +27,20 @@ get_headers(Sock,Type) ->
 
 read_header_block(<<HdrData/binary>>,Sock,Type) ->
 	case proxylib:find_binary_pattern(<<HdrData/binary>>,<<"\r\n\r\n">>) of
+		nomatch when Type == request ->
+			Timeout = if bit_size(HdrData) > 0 ->
+							 3000;
+						 true -> infinity
+					  end,
+			case gen_socket:recv(Sock,0,Timeout) of
+				{ok,<<Dat/binary>>} ->
+					read_header_block(<<HdrData/binary,Dat/binary>>,Sock,Type);
+				{error,closed} = Err ->
+					throw(Err);
+				Err ->
+					?ERROR_MSG("Error receiving request headers: ~p~n",[Err]),
+					throw(Err)
+			end;
 		nomatch ->
 			case gen_socket:recv(Sock,0) of
 				{ok,<<Dat/binary>>} ->

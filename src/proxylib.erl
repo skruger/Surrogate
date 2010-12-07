@@ -14,7 +14,7 @@
 
 %% -export([send/2,setopts/2]).
 
--export([get_pool_process/1,remove_header/2,append_header/2,replace_header/3]).
+-export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,replace_header/3]).
 
 %% -export([re/1]).
 %%
@@ -38,6 +38,11 @@ header2dict([Hdr|R],Acc)->
 			end,
 			header2dict(R,[{string:to_lower(Key),Val}|Acc])
 	end.
+
+remove_headers([],Hdr) ->
+	Hdr;
+remove_headers([H|R],Hdr) ->
+	remove_headers(R,remove_header(H,Hdr)).
 
 remove_header(Name,Hdr) ->
 	remove_header(Name,Hdr,[]).
