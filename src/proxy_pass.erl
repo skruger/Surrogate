@@ -74,6 +74,8 @@ proxy_start({error,_,_,_}=Err,State) ->
 client_send_11(request,State) ->
 	try
 		case proxy_read_request:start(State#proxy_pass.client_sock) of
+			http_connect ->
+				{next_state,client_send_11,State};
 			{proxy_read_request,_} = RDrv ->
 				{next_state,client_send_11,State#proxy_pass{request_driver=RDrv}};
 			Err ->
@@ -93,10 +95,6 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 %% 	?DEBUG_MSG("request_header: ~p~n",[R]),
 	case ReqHdr#header_block.request of
 		#request_rec{method="CONNECT"} ->
-			proxy_read_request:stop(State#proxy_pass.request_driver),
-			receive nothing -> ok after 10 -> ok end,
-%% 			gen_socket:info(State#proxy_pass.client_sock),
-%% 			?DEBUG_MSG("Connect: ~p~n",[ReqHdr]),
 			case proxy_connect:http_connect(State) of
 				ok ->
 					?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,"Connection Established"),
@@ -114,8 +112,11 @@ client_send_11(connect_server,State) ->
 	ReqHdr = State#proxy_pass.request,
 	Via = io_lib:format("Via: ~s ~s (Surrogate)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost()]),
 	Hdr0 = proxylib:append_header(Via, ReqHdr#header_block.headers),
-	Hdr = proxylib:remove_headers(["accept-encoding","keep-alive","proxy-connection","proxy-authorization"],Hdr0),
-	RequestHeaders = [[ReqHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(Hdr)],
+	Hdr = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization"],Hdr0),
+%% 	"accept-encoding",
+	Req=ReqHdr#header_block.request,
+	ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
+	RequestHeaders = [[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)],
 	ConnHost = 
 	case State#proxy_pass.reverse_proxy_host of
 		{host,_Host,_Port} = H -> H;

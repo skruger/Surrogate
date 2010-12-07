@@ -45,13 +45,19 @@ start(Sock) ->
 	ParentPid = self(),
 %% 	?DEBUG_MSG("~p started by: ~p~n",[?MODULE,ParentPid]),
 	Hdr = header_parse:get_headers(Sock,request),
-	case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body}],[]) of
-		{ok,RPid} ->
-			gen_socket:controlling_process(Sock,RPid),
-			gen_fsm:send_event(RPid,run),
-			{?MODULE,RPid};
-		Err ->
-			Err
+	case (Hdr#header_block.request)#request_rec.method of
+		"CONNECT" ->
+			ParentPid ! {request_header,Hdr,0},
+			http_connect;
+		_ ->
+			case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body}],[]) of
+				{ok,RPid} ->
+					gen_socket:controlling_process(Sock,RPid),
+					gen_fsm:send_event(RPid,run),
+					{?MODULE,RPid};
+				Err ->
+					Err
+			end
 	end.
 
 get_next({?MODULE,Pid}) ->
