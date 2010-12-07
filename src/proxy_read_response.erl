@@ -126,8 +126,12 @@ read_response(check_data,State) when State#state.buff == <<>> ->
 			State#state.parent ! {response_data,Data},
 			Sent = trunc(bit_size(Data)/8) + State#state.bytes_sent,
 			{next_state,read_response,State#state{bytes_sent=Sent}};
+		{error,closed} ->
+			State#state.parent ! {end_response_data,State#state.bytes_sent},
+			{stop,normal,State};
 		Err ->
-			?ERROR_MSG("Receive error: ~p~n",[Err]),
+ 			?ERROR_MSG("Receive error: ~p~n",[Err]),
+			State#state.parent ! {end_response_data,State#state.bytes_sent},
 			{stop,normal,State}
 	end;
 read_response(check_data,State) ->
