@@ -71,18 +71,23 @@ init([State]) ->
 	gen_fsm:send_event(self(),run),
 	case proxylib:method_has_data(State#state.request,State#state.headers) of
 		true ->
-			case dict:find("content-length",Dict) of
-				{ok,LenStr} ->
-					{Len,_} = string:to_integer(LenStr),
-					{ok,send_headers,State#state{size=Len,bytes_sent=0}};
-				_ ->
-					case dict:find("transfer-encoding",Dict) of
-						{ok,"chunked"} ->
-							{ok,send_headers,State#state{size=chunked,bytes_sent=0}};
-						Err ->
-							?ERROR_MSG("Unexpected transfer-encoding or transfer-encoding not found: ~p~n",[Err]),
-							{stop,error}
-					end
+			case dict:find("transfer-encoding",Dict) of
+				{ok,"chunked"} ->
+					{ok,send_headers,State#state{size=chunked,bytes_sent=0}};
+				NoChunk ->
+					case dict:find("connection",Dict) of
+						{ok,"close"} ->
+							{ok,send_headers,State#state{size=close,bytes_sent=0}};
+						NoConn ->
+							case dict:find("content-length",Dict) of
+								{ok,LenStr} ->
+									{Len,_} = string:to_integer(LenStr),
+									{ok,send_headers,State#state{size=Len,bytes_sent=0}};
+								NoLen ->
+									?ERROR_MSG("No valid size headers:~nchunked encoding: ~p~nConnection: close: ~p~nContent-length: ~p~nCan not receive data!~n",[NoChunk,NoConn,NoLen]),
+									{stop,error}
+							end
+					end	
 			end;
 		_ ->
 			{ok,send_headers,State#state{size=0,bytes_sent=0}}
