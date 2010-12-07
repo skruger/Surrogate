@@ -4,7 +4,8 @@
 -record(request_rec,{proxytype,method,path,protocol,host,state,port}).
 -record(response_rec,{protocol,code,text}).
 
--record(proxy_pass,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,keepalive}).
+-record(proxy_pass,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,
+					response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,keepalive}).
 
 -record(filter_check,{hosts,urls}).
 
@@ -15,7 +16,7 @@
 -record(filter_host_list,{host,rule}).
 -record(filter_url_list,{host,path,rule}).
 
--record(proxy_userinfo,{username,password}).
+-record(proxy_userinfo,{username,password,extra_info}).
 
 -define(CRITICAL(X,Y), surrogate_log:append(0,?MODULE,lists:flatten(io_lib:format(X,Y)))).
 -define(ERROR_MSG(X,Y), surrogate_log:append(1,?MODULE,lists:flatten(io_lib:format(X,Y)))).

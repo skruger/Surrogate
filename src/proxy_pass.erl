@@ -359,6 +359,7 @@ handle_info({filter_delay,Data},StateName,StateData) ->
 	{next_state, StateName, StateData};
 handle_info({userinfo,UInfo},StateName,State) ->
 %% 	?DEBUG_MSG("Got userinfo: ~p~n",[UInfo]),
+	filter_stream:process_hooks(request,UInfo,State#proxy_pass.filters),
 	{next_state,StateName,State#proxy_pass{userinfo=UInfo}};
 handle_info({request_filter_response,_}=CErr,StateName,State) ->
 	gen_fsm:send_event(self(),CErr),
