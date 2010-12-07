@@ -61,6 +61,8 @@ init(Args) ->
 proxy_start({socket,CSock},State) ->
 	gen_fsm:send_event(self(),request),
 %% 	?DEBUG_MSG("peername: ~p~n",[gen_socket:peername(CSock)]),
+	{ok,Peer} = gen_socket:peername(CSock),
+	filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
 	{next_state,client_send_11,State#proxy_pass{client_sock=CSock}};
 proxy_start({reverse_proxy,CSock,{host,_Host,_Port}=Addr}=_L,State) ->
 	gen_fsm:send_event(self(),request),
@@ -68,46 +70,6 @@ proxy_start({reverse_proxy,CSock,{host,_Host,_Port}=Addr}=_L,State) ->
 proxy_start({error,_,_,_}=Err,State) ->
 	gen_fsm:send_event(self(),Err),
 	{next_state,proxy_error,State}.
-
-%% proxy_auth({check_auth,_AuthCfg},State) ->
-%% %% 	?DEBUG_MSG("Check auth: ~p~n",[AuthCfg]),
-%% 	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
-%% 	case dict:find("proxy-authorization",Dict) of
-%% 		{ok,"Basic "++AuthStr} ->
-%% 			Auth2 = binary_to_list(base64:decode(AuthStr)),
-%% 			case string:chr(Auth2,$:) of
-%% 				0 ->
-%% 					gen_fsm:send_event(self(),send_challenge),
-%% 					{next_state,proxy_auth,State};
-%% 				Idx ->
-%% 					User = string:substr(Auth2,1,Idx-1),
-%% 					Pass = string:substr(Auth2,Idx+1),
-%% 					
-%% 					case proxy_auth:check_user(User,Pass) of
-%% 						{ok,UserInfo} ->
-%% %% 							io:format("User: ~p, Pass: ~p ok~n",[User,Pass]),
-%% 							gen_fsm:send_event(self(),start),
-%% %% 							Hdr = proxylib:replace_header("proxy-authorization","Proxy-Authorization: none",(State#proxy_pass.request)#header_block.headers),
-%% %% 							Request = (State#proxy_pass.request)#header_block{headers=Hdr},
-%% 							{next_state,proxy_connect,State#proxy_pass{userinfo=UserInfo}};
-%% 						Err ->
-%% 							?ERROR_MSG("Authentication error for ~p: ~p (~p)~n",[User,Err,Pass]),
-%% 							gen_fsm:send_event(self(),send_challenge),
-%% 							{next_state,proxy_auth,State}
-%% 					end
-%% 			end;
-%% 		_Err ->
-%% %% 			io:format("No auth: ~p~n",[Err]),
-%% 			gen_fsm:send_event(self(),send_challenge),
-%% 			{next_state,proxy_auth,State}
-%% 	end;
-%% proxy_auth(send_challenge,State) ->
-%% %% 	io:format("Sending auth challenge~n"),
-%% 	AuthReq = "HTTP/1.1 407 Proxy Auth\r\nProxy-Authenticate: Basic realm=\"FastProxy2\"\r\nConnection: close\r\n\r\n",
-%% 	?ACCESS_LOG(407,(State#proxy_pass.request)#header_block.rstr,"nouser","Proxy authorization request."),
-%% 	gen_socket:send(State#proxy_pass.client_sock,AuthReq),
-%% 	gen_socket:close(State#proxy_pass.client_sock),
-%% 	{stop,normal,State}.
 
 client_send_11(request,State) ->
 	try
@@ -132,7 +94,8 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 	case ReqHdr#header_block.request of
 		#request_rec{method="CONNECT"} ->
 			proxy_read_request:stop(State#proxy_pass.request_driver),
-			gen_socket:info(State#proxy_pass.client_sock),
+			receive nothing -> ok after 10 -> ok end,
+%% 			gen_socket:info(State#proxy_pass.client_sock),
 %% 			?DEBUG_MSG("Connect: ~p~n",[ReqHdr]),
 			case proxy_connect:http_connect(State) of
 				ok ->
@@ -190,6 +153,11 @@ client_send_11({request_data,Data},State) ->
 client_send_11({end_request_data,_Size},State) ->
 	gen_fsm:send_event(self(),response),
 	{next_state,server_recv_11,State};
+client_send_11({request_filter_response,Data},State) ->
+	proxy_read_request:stop(State#proxy_pass.request_driver),
+	gen_socket:send(State#proxy_pass.client_sock,Data),
+	gen_socket:close(State#proxy_pass.client_sock),
+	{stop,normal,State};
 client_send_11(Extra,State) ->
 	?ERROR_MSG("Extra data in client_send_11: ~p~n",[Extra]),
 	{stop,normal,State}.
@@ -388,6 +356,12 @@ handle_info({end_response_data,_}=Dat,StateName,StateData) ->
 handle_info({filter_delay,Data},StateName,StateData) ->
 	gen_fsm:send_event(self(),Data),
 	{next_state, StateName, StateData};
+handle_info({userinfo,UInfo},StateName,State) ->
+%% 	?DEBUG_MSG("Got userinfo: ~p~n",[UInfo]),
+	{next_state,StateName,State#proxy_pass{userinfo=UInfo}};
+handle_info({request_filter_response,_}=CErr,StateName,State) ->
+	gen_fsm:send_event(self(),CErr),
+	{next_state,StateName,State};
 handle_info(Info, StateName, StateData) ->
 	?ERROR_MSG("Unmatched info: ~p~n",[Info]),
     {next_state, StateName, StateData}.

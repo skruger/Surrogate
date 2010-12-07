@@ -36,14 +36,14 @@ http_connect(ProxyPass) ->
 			{error,filter_block};
 		_Ok ->
 %% 			?DEBUG_MSG("http_connect() filter pass.~n",[]),
-			case gen_tcp:connect(Host,Port,[binary,{active,false}]) of
+			case gen_tcp:connect(Host,Port,[binary,inet,{active,false}]) of
 				{ok,SvrSock0} ->
-					?DEBUG_MSG("http_connect() ~p connected:~p~n",[self(),SvrSock0]),
+%% 					?DEBUG_MSG("http_connect() ~p connected:~p~n",[self(),SvrSock0]),
 					{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
 					ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
 					ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
+					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\nConnection: close\r\n\r\n">>),
 					gen_socket:controlling_process(SvrSock,ServerPid),
-					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\n\r\n">>),
 					gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
 					ServerPid ! {client,ClientPid},
 					ClientPid ! {server,ServerPid},
@@ -142,7 +142,8 @@ client_loop(ClientSock,ServerPid) when ServerPid == undefined ->
 		{server,Pid} ->
 			gen_socket:setopts(ClientSock,[{active,once}]),
 			client_loop(ClientSock,Pid);
-		_ ->
+		Other ->
+			?ERROR_MSG("client_loop() bad receive: ~p~n",[Other]),
 			client_loop(ClientSock,ServerPid)
 	end;
 client_loop(Sock,SvrPid) ->
@@ -173,7 +174,8 @@ server_loop(ServerSock,ClientPid) when ClientPid == undefined ->
 		{client,Pid} ->
 			gen_socket:setopts(ServerSock,[{active,once}]),
 			server_loop(ServerSock,Pid);
-		_ ->
+		Other ->
+			?ERROR_MSG("server_loop() bad receive: ~p~n",[Other]),
 			server_loop(ServerSock,ClientPid)
 	end;
 server_loop(Sock,CliPid) ->
