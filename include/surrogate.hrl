@@ -5,7 +5,7 @@
 -record(response_rec,{protocol,code,text}).
 
 -record(proxy_pass,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,
-					response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,keepalive}).
+					response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,keepalive,gzbuff}).
 
 -record(filter_check,{hosts,urls}).
 

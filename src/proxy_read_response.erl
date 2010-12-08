@@ -15,7 +15,7 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--record(state,{parent,sock,headers,buff,size,bytes_sent,request,logdebug}).
+-record(state,{parent,sock,headers,buff,size,bytes_sent,request,logdebug,encoding}).
 
 -define(LOGDEBUG(D,CMD) , if D -> CMD ; true -> ok end ).
 
@@ -65,9 +65,27 @@ get_next({?MODULE,Pid}) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 
-init([State]) ->
+init([State0]) ->
 %% 	?DEBUG_MSG("Staring: ~p~n",[(State#state.request)#header_block.request]),
-	Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
+	Dict = proxylib:header2dict((State0#state.headers)#header_block.headers),
+	HBlock0 = (State0#state.headers),
+	{Encoding,Headers} =
+		case dict:find("content-encoding",Dict) of
+			{ok,"gzip"} ->
+%% 				?DEBUG_MSG("gzip encoded.~n",[]),
+%% 				{gzip,HBlock0#header_block.headers};
+				{gzip,proxylib:remove_header("content-encoding",HBlock0#header_block.headers)};
+			{ok,Other} ->
+				?WARN_MSG("Unsupported content-encoding: ~p~n",[Other]),
+				{plain,HBlock0#header_block.headers};
+			_EncInfo ->
+%% 				?DEBUG_MSG("No encoding. ~p~n",[EncInfo]),
+				{plain,HBlock0#header_block.headers}
+		end,
+%% 	?DEBUG_MSG("Started with: ~p~n~nEnded with:~p~n",[HBlock0#header_block.headers,Headers]),
+	HBlock = HBlock0#header_block{headers = Headers},
+	State = State0#state{encoding=Encoding,headers=HBlock},
+%% 	?DEBUG_MSG("State: ~p~n",[State]),
 	gen_fsm:send_event(self(),run),
 	case proxylib:method_has_data(State#state.request,State#state.headers) of
 		true ->
@@ -126,7 +144,8 @@ read_response(check_data,State) when State#state.buff == <<>> ->
 %% 	?DEBUG_MSG("read_response() with no data requesting more: ~p ~p~n",[State#state.bytes_sent,State#state.size]),
 	case gen_socket:recv(State#state.sock,0) of
 		{ok,Data} ->
-			State#state.parent ! {response_data,Data},
+			send_response_data(State,Data),
+%% 			State#state.parent ! {response_data,Data},
 			Sent = trunc(bit_size(Data)/8) + State#state.bytes_sent,
 			{next_state,read_response,State#state{bytes_sent=Sent}};
 		{error,closed} ->
@@ -139,7 +158,8 @@ read_response(check_data,State) when State#state.buff == <<>> ->
 	end;
 read_response(check_data,State) ->
 %% 	?DEBUG_MSG("Sending existing data.~n",[]),
-	State#state.parent ! {response_data,State#state.buff},
+	send_response_data(State,State#state.buff),
+%% 	State#state.parent ! {response_data,State#state.buff},
 	Sent = trunc(bit_size(State#state.buff)/8) + State#state.bytes_sent,
 	{next_state,read_response,State#state{buff = <<>>,bytes_sent=Sent}};
 read_response({gen_socket,_,<<Data>>},State) ->
@@ -189,8 +209,9 @@ read_chunked_response(check_data,State) ->
 				CLen when CLen >= Len ->
 					% complete chunk
 					<<SendChunk:Len/binary,R/binary>> = Chunk,
-					BytesSent = CLen + State#state.bytes_sent, 
-					State#state.parent ! {response_data,SendChunk},
+					BytesSent = CLen + State#state.bytes_sent,
+					send_response_data(State,SendChunk),
+%% 					State#state.parent ! {response_data,SendChunk},
  					?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Got chunk:~n~p~n(~p)~n Leftover:~n~p~n",[SendChunk,trunc(bit_size(SendChunk)/8),R])),
 					{next_state,read_chunked_response,State#state{buff=R,bytes_sent=BytesSent}};
 				_ ->
@@ -214,6 +235,15 @@ read_chunked_response({gen_socket,_,<<Data>>},State) ->
 	<<OldBuff/binary>> = State#state.buff,
 	{next_state,read_chunked_response,State#state{buff = <<OldBuff/binary,Data/binary>>}}.
 		
+
+send_response_data(State,Data) ->
+	case State#state.encoding of
+		gzip ->
+%% 			?DEBUG_MSG("Sending gzip_response_data~n",[]),
+			State#state.parent ! {gzip_response_data,Data};
+		_ ->
+			State#state.parent ! {response_data,Data}
+	end.
 	
 %% --------------------------------------------------------------------
 %% Func: StateName/3

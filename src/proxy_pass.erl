@@ -50,7 +50,7 @@ start(Args) ->
 init(Args) ->
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
-    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0}}.
+    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,gzbuff= <<>> }}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -112,8 +112,16 @@ client_send_11(connect_server,State) ->
 	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 	ReqHdr = State#proxy_pass.request,
 	Via = io_lib:format("Via: ~s ~s (Surrogate)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost()]),
-	Hdr0 = proxylib:append_header(Via, ReqHdr#header_block.headers),
-	Hdr = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization"],Hdr0),
+	Hdr0 = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization","accept-encoding"],ReqHdr#header_block.headers),
+	Hdr1 = 
+	case proplists:get_value(enable_gzip,State#proxy_pass.config,false) of
+		false -> Hdr0;
+		_EnableGzip ->
+%% 			?DEBUG_MSG("EnableGzip: ~p~n",[EnableGzip]),
+			proxylib:append_header("Accept-encoding: gzip",Hdr0)
+	end,
+	Hdr = proxylib:append_header(Via, Hdr1),
+	
 %% 	"accept-encoding",
 	Req=ReqHdr#header_block.request,
 	ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
@@ -344,6 +352,26 @@ handle_info({response_header,_,_}=Dat,StateName,StateData) ->
 			gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
+handle_info({gzip_response_data,GzData0},StateName,State) ->
+	GzBuff = State#proxy_pass.gzbuff,
+	GzData = <<GzBuff/binary,GzData0/binary>>,
+	case
+		try
+			zlib:gunzip(GzData)
+		catch
+			_:Err ->
+				Err
+		end of
+		Data when is_binary(Data) ->
+%% 			?DEBUG_MSG("gzip_response_data OK! (~p bytes)~n",[trunc(bit_size(Data)/8)]),
+			self() ! {response_data,Data},
+			{next_state,StateName,State#proxy_pass{gzbuff = <<>>}};
+		_Other ->
+%% 			?DEBUG_MSG("gzip_response_data error: ~p~n",[Other]),
+			proxy_read_response:get_next(State#proxy_pass.response_driver),
+			{next_state,StateName,State#proxy_pass{gzbuff = GzData}}
+	end;
+
 handle_info({response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
 	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters) of
