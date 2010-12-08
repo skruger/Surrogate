@@ -125,7 +125,6 @@ handle_call({close},_From,State) when State#state.type == ssl ->
 	{reply,R,State};
 handle_call({setopts,Opt},_From,State) when State#state.type == gen_tcp ->
 	R = inet:setopts(State#state.socket,Opt),
-	?DEBUG_MSG("Setting options for gen_tcp: ~p -> ~p~n",[Opt,R]),
 	{reply,R,State};
 handle_call({getopts,Opt},_From,State) when State#state.type == gen_tcp ->
 	R = inet:getopts(State#state.socket,Opt),
@@ -166,12 +165,10 @@ handle_cast(_Msg, State) ->
 %% --------------------------------------------------------------------
 handle_info({T,_Socket,Data},State) when (T == ssl) or (T == tcp) ->
 	P = {?MODULE,{?MODULE,self()},Data},
-%% 	?DEBUG_MSG("~p send ~p to ~p~n",[T,P,State#state.controlling_process]),
 	State#state.controlling_process ! P,
 	{noreply,State};
 handle_info({T,_Socket},State) when (T==tcp_closed) or (T == ssl_closed) ->
 	State#state.controlling_process ! {gen_socket_closed,{?MODULE,self()}},
-%% 	?DEBUG_MSG("Got ~p~n",[T]),
 	{stop,normal,State};
 handle_info({T,_Socket,Reason},State) when (T==tcp_error) or (T == ssl_error) ->
 	State#state.controlling_process ! {gen_socket_error,{?MODULE,self()},Reason},

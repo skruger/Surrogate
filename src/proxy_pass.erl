@@ -65,7 +65,7 @@ proxy_start({socket,CSock},State) ->
 	filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
 	{next_state,client_send_11,State#proxy_pass{client_sock=CSock}};
 proxy_start({reverse_proxy,CSock,{host,_Host,_Port}=Addr}=_L,State) ->
-	?DEBUG_MSG("Starting reverse proxy for: ~p~n",[Addr]),
+%% 	?DEBUG_MSG("Starting reverse proxy for: ~p~n",[Addr]),
 	gen_fsm:send_event(self(),request),
 	{next_state,client_send_11,State#proxy_pass{client_sock=CSock,reverse_proxy_host=Addr}};
 proxy_start({error,_,_,_}=Err,State) ->
@@ -179,7 +179,7 @@ server_recv_11(response,State) ->
 	end;
 server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr),
-	?DEBUG_MSG("Got response_header (~p) ~p: ~p~n",[ResHdr#header_block.rstr,ResponseSize,self()]),
+%% 	?DEBUG_MSG("Got response_header (~p) ~p: ~p~n",[ResHdr#header_block.rstr,ResponseSize,self()]),
 	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(ResHdr#header_block.headers)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
@@ -190,7 +190,7 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
 server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == close ->
-	?DEBUG_MSG("Connection closed: ~p~n",[self()]),
+%% 	?DEBUG_MSG("Connection closed: ~p~n",[self()]),
 	gen_socket:close(State#proxy_pass.server_sock),
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State};
