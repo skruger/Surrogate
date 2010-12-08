@@ -139,6 +139,7 @@ accept_https({wait,ListenSock},State) ->
 					{next_state,http_balance,State#worker_state{client_sock=Sock}};
 				SSLErr ->
 					?ERROR_MSG("SSL Error: ~p~n",[SSLErr]),
+					gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
 					{stop,normal,State}
 			end;
 		{error,timeout} ->
@@ -153,8 +154,7 @@ accept_https({wait,ListenSock},State) ->
 
 http_balance(get_headers,State) ->
 	Sock = State#worker_state.client_sock,
-	ReqHdr = header_parse:get_headers(Sock,request),
-	ProxyPass = #proxy_pass{request=ReqHdr,proxy_type=ReqHdr#header_block.rstr,config=State#worker_state.proplist},
+ 	ProxyPass = #proxy_pass{proxy_type=transparent_proxy,config=State#worker_state.proplist},
 	{ok,Pid} = proxy_pass:start(ProxyPass),
 	gen_socket:controlling_process(Sock,Pid),
 	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),

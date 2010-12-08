@@ -65,6 +65,7 @@ proxy_start({socket,CSock},State) ->
 	filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
 	{next_state,client_send_11,State#proxy_pass{client_sock=CSock}};
 proxy_start({reverse_proxy,CSock,{host,_Host,_Port}=Addr}=_L,State) ->
+	?DEBUG_MSG("Starting reverse proxy for: ~p~n",[Addr]),
 	gen_fsm:send_event(self(),request),
 	{next_state,client_send_11,State#proxy_pass{client_sock=CSock,reverse_proxy_host=Addr}};
 proxy_start({error,_,_,_}=Err,State) ->

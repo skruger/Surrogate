@@ -42,7 +42,7 @@ http_connect(ProxyPass) ->
 					{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
 					ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
 					ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
-					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.0 200 Connection Established\r\nConnection: close\r\n\r\n">>),
+					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.1 200 Connection Established\r\n\r\n">>),
 					gen_socket:controlling_process(SvrSock,ServerPid),
 					gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
 					ServerPid ! {client,ClientPid},

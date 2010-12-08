@@ -44,7 +44,7 @@ init([ProxyPassPid]) ->
 	{ok,#state{proxy_pass=ProxyPassPid}}.
 
 handle_call({request_peer,{Addr,Port}}=Peer,_From,State) ->
-	?DEBUG_MSG("Storing peer: ~p~n",[Peer]),
+%% 	?DEBUG_MSG("Storing peer: ~p~n",[Peer]),
 	{reply,Peer,State#state{peer_addr=Addr,peer_port=Port}};
 handle_call(get_peer,_From,State) ->
 	PInfo = {peerinfo,format_ip(State#state.peer_addr),State#state.peer_addr,State#state.peer_port},
