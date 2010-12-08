@@ -20,7 +20,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, {client_sock,server_sock}).
 
 %% ====================================================================
 %% External functions
@@ -40,20 +40,63 @@ http_connect(ProxyPass) ->
 				{ok,SvrSock0} ->
 %% 					?DEBUG_MSG("http_connect() ~p connected:~p~n",[self(),SvrSock0]),
 					{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
-					ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
-					ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
-					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.1 200 Connection Established\r\n\r\n">>),
-					gen_socket:controlling_process(SvrSock,ServerPid),
-					gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
-					ServerPid ! {client,ClientPid},
-					ClientPid ! {server,ServerPid},
-					ok;
+ 					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.1 200 Connection Established\r\n\r\n">>),
+
+					connect_pass_start(#state{client_sock=ProxyPass#proxy_pass.client_sock,server_sock=SvrSock});
+%% 					ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
+%% 					ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
+%% 					gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.1 200 Connection Established\r\nConnection: keep-alive\r\n\r\n">>),
+%% 					gen_socket:controlling_process(SvrSock,ServerPid),
+%% 					gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
+%% 					ServerPid ! {client,ClientPid},
+%% 					ClientPid ! {server,ServerPid},
+%% 					ok;
 				{error,ErrStat} = Err ->
 					gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p",[ErrStat]))}),
 					Err
 			end
 	end.
 			
+
+connect_pass_start(State) ->
+	{ok,gen_tcp,CSock} = gen_socket:destroy(State#state.client_sock),
+	{ok,gen_tcp,SSock} = gen_socket:destroy(State#state.server_sock),
+	inet:setopts(CSock,[{active,once}]),
+	inet:setopts(SSock,[{active,once}]),
+	connect_pass(State#state{client_sock=CSock,server_sock=SSock}).
+
+connect_pass(State) ->
+%% 	?DEBUG_MSG("Starting connect_pass(~p)~n",[State]),
+	receive
+		{tcp,Sock,Data} when Sock == State#state.client_sock ->
+			gen_tcp:send(State#state.server_sock,Data),
+			inet:setopts(State#state.client_sock,[{active,once}]),
+%% 			?DEBUG_MSG("~p received client data.~n",[self()]),
+			connect_pass(State);
+		{tcp,Sock,Data} when Sock == State#state.server_sock ->
+			gen_tcp:send(State#state.client_sock,Data),
+			inet:setopts(State#state.server_sock,[{active,once}]),
+%% 			?DEBUG_MSG("~p received server data.~n",[self()]),
+			connect_pass(State);
+		{tcp_closed,Sock} when Sock == State#state.client_sock ->
+			gen_tcp:close(State#state.server_sock),
+%% 			?DEBUG_MSG("Client sock closed.  Closing server.",[]),
+			ok;
+		{tcp_closed,Sock} when Sock == State#state.server_sock ->
+			gen_tcp:close(State#state.client_sock),
+%% 			?DEBUG_MSG("Server sock closed.  Closing client.",[]),
+			ok;
+		Other ->
+			?DEBUG_MSG("Unexpected message in connect_pass: ~p~n",[Other]),
+			gen_tcp:close(State#state.server_sock),
+			gen_tcp:close(State#state.client_sock),
+			ok
+	after 300000 ->
+			gen_tcp:close(State#state.server_sock),
+			gen_tcp:close(State#state.client_sock),
+			ok
+	end.
+
 
 %% 	?ACCESS_LOG(RCode,State#proxy_pass.request,State#proxy_pass.userinfo,SvrHeader#proxy_pass.request); 
 

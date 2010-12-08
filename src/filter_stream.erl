@@ -57,11 +57,13 @@ init_filter_list([F|R],Acc) ->
 %% if delay is returned proxy_pass must receive the data as {filer_delay,Data}
 
 process_hooks(Hook,Data,Filters) ->
+%% 	?DEBUG_MSG("Process hooks: ~p~n",[Filters]),
 	process_hooks(Hook,Data,Filters,Data).
 
 process_hooks(_,Data,[],_) ->
 	Data;
 process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData) ->
+%% 	?DEBUG_MSG("Process hook: ~p~n",[F]),
 	case 
 		try
 %% 			?DEBUG_MSG("Processing hook: ~p~n",[F]),
@@ -73,8 +75,17 @@ process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData) ->
 		end of
 		error ->
 			% alternative to error is stopping all processing and returning OrigData
+			?DEBUG_MSG("Error? ~p~n",[FMod]),
 			process_hooks(Hook,Data,R,OrigData);
+		delay -> delay;
 		RetData ->
+%% 			?DEBUG_MSG("~p Got RetData: ~p~n",[FMod,RetData]),
+%% 			case RetData of
+%% 				{response_data,_} ->
+%%  					ok;
+%% 				_ ->
+%% 					?DEBUG_MSG("~p Got RetData: ~p~n",[FMod,RetData])
+%% 			end,
 			process_hooks(Hook,RetData,R,OrigData)
 	end.
 

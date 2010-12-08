@@ -14,7 +14,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([create/2,send/2,recv/2,recv/3,setopts/2,getopts/2,close/1,controlling_process/2,peername/1,info/1]).
+-export([create/2,destroy/1,send/2,recv/2,recv/3,setopts/2,getopts/2,close/1,controlling_process/2,peername/1,info/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -29,12 +29,15 @@ create(Socket,Type)  -> %% when (Type == gen_tcp) or (Type == ssl)
 %% 	?DEBUG_MSG("gen_socket:create(~p,~p)~n",[Socket,Type]),
 	case gen_server:start(?MODULE,[Socket,Type,self()],[]) of
 		{ok,Pid} ->
-			Type:controlling_process(Socket,Pid),
+			ok = Type:controlling_process(Socket,Pid),
 			GenSock = {?MODULE,Pid},
 			{ok,GenSock};
 		Err ->
 			Err
 	end.
+
+destroy({?MODULE,Sock}) ->
+	gen_server:call(Sock,{destroy,self()}).
 
 controlling_process({?MODULE,Sock},Pid) ->
 	gen_server:call(Sock,{controlling_process,Pid}).
@@ -88,6 +91,11 @@ init([Socket,Type,Pid]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_call({destroy,Pid},From,State) when State#state.type == gen_tcp ->
+	ok = gen_tcp:controlling_process(State#state.socket,Pid),
+	Reply = {ok,State#state.type,State#state.socket},
+	gen_server:reply(From,Reply),
+	{stop,normal,State};
 handle_call(info,From,State) ->
 	?INFO_MSG("Socket info requested by ~p~n~p~n",[From,State]),
 	{reply,State,State};
@@ -117,6 +125,7 @@ handle_call({close},_From,State) when State#state.type == ssl ->
 	{reply,R,State};
 handle_call({setopts,Opt},_From,State) when State#state.type == gen_tcp ->
 	R = inet:setopts(State#state.socket,Opt),
+	?DEBUG_MSG("Setting options for gen_tcp: ~p -> ~p~n",[Opt,R]),
 	{reply,R,State};
 handle_call({getopts,Opt},_From,State) when State#state.type == gen_tcp ->
 	R = inet:getopts(State#state.socket,Opt),
@@ -162,6 +171,7 @@ handle_info({T,_Socket,Data},State) when (T == ssl) or (T == tcp) ->
 	{noreply,State};
 handle_info({T,_Socket},State) when (T==tcp_closed) or (T == ssl_closed) ->
 	State#state.controlling_process ! {gen_socket_closed,{?MODULE,self()}},
+%% 	?DEBUG_MSG("Got ~p~n",[T]),
 	{stop,normal,State};
 handle_info({T,_Socket,Reason},State) when (T==tcp_error) or (T == ssl_error) ->
 	State#state.controlling_process ! {gen_socket_error,{?MODULE,self()},Reason},

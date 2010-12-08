@@ -22,6 +22,8 @@ start_instance() -> {?MODULE,?MODULE}.
 
 process_hook(_,response,{response_header,_,chunked}=Data) ->
 	Data;
+process_hook(_,response,{response_header,_,close}=Data) ->
+	Data;
 process_hook(_,response,{response_header,_,0}=Header) ->
 	Header;
 process_hook(_,response,{response_header,Hdr,_Length}=Header) ->
@@ -33,15 +35,14 @@ process_hook(_,response,{response_header,Hdr,_Length}=Header) ->
 					NewHeaders = proxylib:replace_header("content-length","Transfer-Encoding: chunked",Hdr#header_block.headers),
 					{response_header,Hdr#header_block{headers=NewHeaders},chunked};
 				"HTTP/1.0" ->
-					NewHeaders0 = proxylib:remove_header("connection",Hdr#header_block.headers),
-					NewHeaders1 = proxylib:remove_header("content-length",NewHeaders0),
-					NewHeaders2 = proxylib:append_header("Connection: close",NewHeaders1),
+					NewHeaders0 = proxylib:remove_headers(["connection","content-length"],Hdr#header_block.headers),
+					NewHeaders2 = proxylib:append_header("Connection: close",NewHeaders0),
 					{response_header,Hdr#header_block{headers=NewHeaders2},close}
 			end;
 		_ -> 
 			Header
 	end;
-process_hook(_,_,Data) ->
+process_hook(_,_Method,Data) ->
 	Data.
 
 %%

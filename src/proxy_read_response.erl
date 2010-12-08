@@ -96,13 +96,16 @@ init([State]) ->
 send_headers(run,State) ->
 %% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
 	State#state.parent ! {response_header,State#state.headers,State#state.size},
+%% 	Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
 	case State#state.size of
 		chunked ->
  			?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Starting in chunked mode.",[])),
 			{next_state,read_chunked_response,State};
+		close ->
+			{next_state,read_response,State};
 		0 ->
 %% 			?DEBUG_MSG("No data to send.",[]),
-			State#state.parent ! {end_response_data,0},
+%% 			State#state.parent ! {end_response_data,0},
 			gen_socket:controlling_process(State#state.sock,State#state.parent),
 			{stop,normal,State};
 		Size when Size > 0 ->

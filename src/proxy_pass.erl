@@ -117,7 +117,7 @@ client_send_11(connect_server,State) ->
 %% 	"accept-encoding",
 	Req=ReqHdr#header_block.request,
 	ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
-	RequestHeaders = [[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)],
+	RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)]),
 	ConnHost = 
 	case State#proxy_pass.reverse_proxy_host of
 		{host,_Host,_Port} = H -> H;
@@ -151,6 +151,7 @@ client_send_11(connect_server,State) ->
 	end;
 client_send_11({request_data,Data},State) ->
 	gen_socket:send(State#proxy_pass.server_sock,Data),
+	proxy_read_request:get_next(State#proxy_pass.request_driver),
 	{next_state,client_send_11,State};
 client_send_11({end_request_data,_Size},State) ->
 	gen_fsm:send_event(self(),response),
@@ -178,7 +179,7 @@ server_recv_11(response,State) ->
 	end;
 server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr),
-%% 	?DEBUG_MSG("Got response_header (~p).~n",[self()]),
+	?DEBUG_MSG("Got response_header (~p) ~p: ~p~n",[ResHdr#header_block.rstr,ResponseSize,self()]),
 	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(ResHdr#header_block.headers)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
@@ -189,6 +190,7 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
 server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == close ->
+	?DEBUG_MSG("Connection closed: ~p~n",[self()]),
 	gen_socket:close(State#proxy_pass.server_sock),
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State};
@@ -335,22 +337,23 @@ handle_info({end_request_data,_}=Dat,StateName,StateData) ->
 	end,
 	{next_state, StateName, StateData};
 handle_info({response_header,_,_}=Dat,StateName,StateData) ->
-%% 	?DEBUG_MSG("Got response header in state ~p~n",[StateName]),
-	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters) of
 		delay -> ok;
-		I -> gen_fsm:send_event(self(),I)
+		I ->
+%% 			?DEBUG_MSG("Got response header in state ~p~n~p~n",[StateName,I]),
+			gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
-	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({end_response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
-	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
 	end,
