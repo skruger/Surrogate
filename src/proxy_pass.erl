@@ -105,57 +105,50 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 					{next_state,proxy_error,State}
 			end;
 		_ ->
-			gen_fsm:send_event(self(),connect_server),
-			{next_state,client_send_11,State}
-	end;
-client_send_11(connect_server,State) ->
-	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
-	ReqHdr = State#proxy_pass.request,
-	Via = io_lib:format("Via: ~s ~s (Surrogate)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost()]),
-	Hdr0 = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization","accept-encoding"],ReqHdr#header_block.headers),
-	Hdr1 = 
-	case proplists:get_value(enable_gzip,State#proxy_pass.config,false) of
-		false -> Hdr0;
-		_EnableGzip ->
-%% 			?DEBUG_MSG("EnableGzip: ~p~n",[EnableGzip]),
-			proxylib:append_header("Accept-encoding: gzip",Hdr0)
-	end,
-	Hdr = proxylib:append_header(Via, Hdr1),
-	
-%% 	"accept-encoding",
-	Req=ReqHdr#header_block.request,
-	ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
-	RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)]),
-	ConnHost = 
-	case State#proxy_pass.reverse_proxy_host of
-		{host,_Host,_Port} = H -> H;
-		_ ->
-			case dict:find("host",Dict) of
-				{ok,HostStr} ->
-					proxylib:parse_host(HostStr,80);
-				EHost -> EHost
-			end
-
-	end,
-	case ConnHost of
-		{host,Host,Port} ->
-			case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
-				{ok,SSock0} ->
-					{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-					gen_socket:send(SSock,RequestHeaders),
-					proxy_read_request:get_next(State#proxy_pass.request_driver),
-					{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
-				ErrConn ->
-					?ERROR_MSG("Could not Connect to backend server: ~p ~p~n",[ConnHost,ErrConn]),
-					EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
+			Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
+			ReqHdr = State#proxy_pass.request,
+			Via = io_lib:format("Via: ~s ~s (Surrogate)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost()]),
+			Hdr0 = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization","accept-encoding"],ReqHdr#header_block.headers),
+			Hdr1 = 
+			case proplists:get_value(enable_gzip,State#proxy_pass.config,false) of
+				false -> Hdr0;
+				_EnableGzip ->
+					proxylib:append_header("Accept-encoding: gzip",Hdr0)
+			end,
+			Hdr = proxylib:append_header(Via, Hdr1),
+			Req=ReqHdr#header_block.request,
+			ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
+			RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)]),
+			ConnHost = 
+			case State#proxy_pass.reverse_proxy_host of
+				{host,_Host,_Port} = H -> H;
+				_ ->
+					case dict:find("host",Dict) of
+						{ok,HostStr} ->
+							proxylib:parse_host(HostStr,80);
+						EHost -> EHost
+					end
+			end,
+			case ConnHost of
+				{host,Host,Port} ->
+					case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
+						{ok,SSock0} ->
+							{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
+							gen_socket:send(SSock,RequestHeaders),
+							proxy_read_request:get_next(State#proxy_pass.request_driver),
+							{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
+						ErrConn ->
+							?ERROR_MSG("Could not Connect to backend server: ~p ~p~n",[ConnHost,ErrConn]),
+							EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
+							gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+							{next_state,proxy_error,State}
+					end;
+				Err ->
+					?ERROR_MSG("Could not determine backend server: ~p~n",[Err]),
+					EMsg = io_lib:format("Internal proxy error: ~p",[Err]),
 					gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
 					{next_state,proxy_error,State}
-			end;
-		Err ->
-			?ERROR_MSG("Could not determine backend server: ~p~n",[Err]),
-			EMsg = io_lib:format("Internal proxy error: ~p",[Err]),
-			gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
-			{next_state,proxy_error,State}
+			end
 	end;
 client_send_11({request_data,Data},State) ->
 	gen_socket:send(State#proxy_pass.server_sock,Data),
