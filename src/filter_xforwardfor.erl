@@ -27,10 +27,13 @@ start_instance() ->
 	{?MODULE,Pid}.
 
 
-process_hook(Pid,request,{request_peer,_} = Peer) ->
-	gen_server:call(Pid,Peer);
+process_hook(Pid,_,{request_peer,_} = Peer) ->
+%% 	?DEBUG_MSG("Got peer: ~p~n",[Peer]),
+	gen_server:call(Pid,Peer),
+	Peer;
 process_hook(Pid,request,{request_header,ReqHdr,RequestSize}) ->
 	{peerinfo,Addr,_,_} = gen_server:call(Pid,get_peer),
+%% 	?DEBUG_MSG("Addr: ~p~n",[Addr]),
 	HBlock = proxylib:append_header("X-Forwarded-For: "++Addr,ReqHdr#header_block.headers),
 	{request_header,ReqHdr#header_block{headers=HBlock},RequestSize};
 process_hook(_Ref,_Type,Data) ->
@@ -53,9 +56,12 @@ handle_call(_Msg,_From,State) ->
 	{reply,ok,State}.
 
 
-
 format_ip({A,B,C,D}) ->
-	lists:flatten(io_lib:format("~p.~p.~p.~p",[A,B,C,D])).
+	lists:flatten(io_lib:format("~p.~p.~p.~p",[A,B,C,D]));
+format_ip(Info) ->
+	?WARN_MSG("~p Bad IP format: ~p~nReturning \"0.0.0.0\"",[self(),Info]),
+	"0.0.0.0".
+	
 
 
 %% --------------------------------------------------------------------
