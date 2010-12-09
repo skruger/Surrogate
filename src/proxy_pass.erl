@@ -188,7 +188,10 @@ server_recv_11(response,State) ->
 server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr),
 %% 	?DEBUG_MSG("Got response_header (~p) ~p: ~p~n",[ResHdr#header_block.rstr,ResponseSize,self()]),
-	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(ResHdr#header_block.headers)],
+%% 	RHdr0 = proxylib:remove_headers(["connection"],ResHdr#header_block.headers),
+%% 	RHdr = proxylib:append_header("Connection: close",RHdr0),
+	RHdr = ResHdr#header_block.headers,
+	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(RHdr)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State#proxy_pass{response=ResHdr,response_bytes_left=ResponseSize}};
@@ -210,6 +213,7 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
 server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == chunked ->
+%% 	?DEBUG_MSG("Chunk end: ~p~n",[self()]),
 	gen_socket:send(State#proxy_pass.client_sock,<<"0\r\n\r\n">>),
 	gen_fsm:send_event(self(),next),
 	{next_state,proxy_finish,State};
@@ -234,11 +238,11 @@ proxy_finish(next,State) ->
 %% 	gen_socket:close(State#proxy_pass.client_sock),
 %% 	{stop,normal,State}.
 	case dict:find("proxy-connection",Dict) of
-		{ok,"keep-alive"} when State#proxy_pass.keepalive >= 10 ->
-			?DEBUG_MSG("Proxy-Connection: keep-alive Closing (~p)~n",[State#proxy_pass.keepalive]),
-			gen_socket:close(State#proxy_pass.server_sock),
-			gen_socket:close(State#proxy_pass.client_sock),
-			{stop,normal,State};
+%% 		{ok,"keep-alive"} when State#proxy_pass.keepalive >= 10 ->
+%% 			?DEBUG_MSG("Proxy-Connection: keep-alive Closing (~p)~n",[State#proxy_pass.keepalive]),
+%% 			gen_socket:close(State#proxy_pass.server_sock),
+%% 			gen_socket:close(State#proxy_pass.client_sock),
+%% 			{stop,normal,State};
 		{ok,"keep-alive"} ->
 %% 			?DEBUG_MSG("Proxy-Connection: keep-alive (~p)~n",[State#proxy_pass.keepalive]),
 			gen_fsm:send_event(self(),request),
@@ -395,6 +399,9 @@ handle_info({userinfo,UInfo},StateName,State) ->
 	{next_state,StateName,State#proxy_pass{userinfo=UInfo}};
 handle_info({request_filter_response,_}=CErr,StateName,State) ->
 	gen_fsm:send_event(self(),CErr),
+	{next_state,StateName,State};
+handle_info(get_request_data,StateName,State) ->
+	proxy_read_request:get_next(State#proxy_pass.request_driver),
 	{next_state,StateName,State};
 handle_info(Info, StateName, StateData) ->
 	?ERROR_MSG("Unmatched info: ~p~n",[Info]),

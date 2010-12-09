@@ -66,6 +66,7 @@ get_next({?MODULE,Pid}) ->
 %% --------------------------------------------------------------------
 
 init([State0]) ->
+	erlang:monitor(process,State0#state.parent),
 %% 	?DEBUG_MSG("Staring: ~p~n",[(State#state.request)#header_block.request]),
 	Dict = proxylib:header2dict((State0#state.headers)#header_block.headers),
 	HBlock0 = (State0#state.headers),
@@ -122,13 +123,9 @@ send_headers(run,State) ->
 		close ->
 			{next_state,read_response,State};
 		0 ->
-%% 			?DEBUG_MSG("No data to send.",[]),
-%% 			State#state.parent ! {end_response_data,0},
-			gen_socket:controlling_process(State#state.sock,State#state.parent),
-			{stop,normal,State};
+			{next_state,read_response,State};
 		Size when Size > 0 ->
 %% 			?DEBUG_MSG("Starting with known size: ~p~n",[Size]),
-			
 			{next_state,read_response,State};
 		Other ->
 			?ERROR_MSG("Invalid size: ~p",[Other]),
@@ -287,6 +284,9 @@ handle_info({gen_socket,_,_}=Data, StateName, StateData) ->
 	?DEBUG_MSG("Got data: ~p~n",[Data]),
 	gen_fsm:send_event(self(),Data),
     {next_state, StateName, StateData};
+handle_info({'DOWN',_,process,_Pid,_},_StateName,State) ->
+	?DEBUG_MSG("Stopping ~p because proxy_pass went away.~n",[?MODULE]),
+	{stop,normal,State};
 handle_info(Other,StateName,StateData) ->
 	?INFO_MSG("Got unexpected info in state: ~p~n~p~n",[StateName,Other]),
 	{next_state,StateName,StateData}.
