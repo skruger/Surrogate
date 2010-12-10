@@ -92,8 +92,8 @@ handle_call({end_request_data,_Size},_From,State) ->
  	ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
  	RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(ReqHdr#header_block.headers)]),
 	?DEBUG_MSG("Header block: ~n~p~n",[RequestHeaders]),
- 			
-	{reply,ok,State#state{request_hdr=undefined,request_data = <<>>}};
+	
+ 	{reply,ok,State#state{request_hdr=undefined,request_data = <<>>}};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.

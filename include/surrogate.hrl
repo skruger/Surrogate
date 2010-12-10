@@ -11,7 +11,7 @@
 
 -record(proxy_user,{username,host,auth_method}).
 
--record(header_block,{request,response,rstr,headers,body}).
+-record(header_block,{request,response,rstr,headers,body,expect}).
 
 -record(filter_host_list,{host,rule}).
 -record(filter_url_list,{host,path,rule}).

@@ -81,12 +81,18 @@ stop({?MODULE,Pid}) ->
 init([State]) ->
 %% 	?DEBUG_MSG("Staring: ~p~n",[(State#state.request)#header_block.request]),
 	Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
+	Expect = case dict:find("expect",Dict) of
+				 {ok,V} ->
+					 list_to_atom(V);
+				 _ -> undefined
+			 end,
+	Headers = (State#state.headers)#header_block{expect = Expect},
 	case dict:find("content-length",Dict) of
 		{ok,LenStr} ->
 			{Len,_} = string:to_integer(LenStr),
-			{ok,send_headers,State#state{size=Len,bytes_sent=0}};
+			{ok,send_headers,State#state{size=Len,bytes_sent=0,headers=Headers}};
 		_ ->
-			{ok,send_headers,State#state{size=0,bytes_sent=0}}
+			{ok,send_headers,State#state{size=0,bytes_sent=0,headers=Headers}}
 	end.
 
 send_headers(run,State) ->

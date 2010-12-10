@@ -94,6 +94,10 @@ client_send_11(request,State) ->
  			?ERROR_MSG("Error receiving headers: ~p (Keepalive: ~p)~n",[ErrCatch,State#proxy_pass.keepalive]),
  			{stop,normal,State}
 	end;
+client_send_11({request_header,#header_block{expect='100-continue'}=_ReqHdr,_RequestSize}=_R,State) ->
+	?ERROR_MSG("Error: Expect: 100-continue is unsupported~n",[]),
+	gen_fsm:send_event(self(),{error,417,"Expectation Failed",""}),
+	{next_state,proxy_error,State};
 client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 	State = State0#proxy_pass{request=ReqHdr},
 %% 	?DEBUG_MSG("request_header: ~p~n",[R]),
@@ -161,7 +165,11 @@ client_send_11({end_request_data,_Size},State) ->
 	gen_fsm:send_event(self(),response),
 	{next_state,server_recv_11,State};
 client_send_11({request_filter_response,Data},State) ->
-	proxy_read_request:stop(State#proxy_pass.request_driver),
+	case State#proxy_pass.request_driver of
+		{Mod,_} ->
+			Mod:stop(State#proxy_pass.request_driver);
+		_ -> ok
+	end,
 	gen_socket:send(State#proxy_pass.client_sock,Data),
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State};
