@@ -50,6 +50,7 @@ start(Args) ->
 init(Args) ->
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
+	filter_stream:process_hooks(info,{proxy_pass_config,Args#proxy_pass.config},FilterRef),
     {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,gzbuff= <<>> }}.
 
 %% --------------------------------------------------------------------

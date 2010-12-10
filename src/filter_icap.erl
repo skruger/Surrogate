@@ -86,6 +86,13 @@ handle_call({end_request_data,_Size},_From,State) ->
 	State#state.proxy_pass ! {filter_delay,State#state.request_hdr},
 	State#state.proxy_pass ! {filter_delay,{request_data,State#state.request_data}},
 	State#state.proxy_pass ! {filter_delay,{end_request_data,trunc(bit_size(State#state.request_data)/8)}},
+	
+	{request_header,ReqHdr,_} = State#state.request_hdr,
+ 	Req=ReqHdr#header_block.request,
+ 	ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
+ 	RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(ReqHdr#header_block.headers)]),
+	?DEBUG_MSG("Header block: ~n~p~n",[RequestHeaders]),
+ 			
 	{reply,ok,State#state{request_hdr=undefined,request_data = <<>>}};
 handle_call(_Request, _From, State) ->
     Reply = ok,

@@ -1,5 +1,5 @@
 
--module(filter_xforwardfor).
+-module(filter_headers).
 
 %%
 %% Include files
@@ -17,24 +17,29 @@
 -behaviour(filter_stream).
 -behaviour(gen_server).
 
--record(state,{proxy_pass,peer_addr,peer_port}).
+-record(state,{proxy_pass,peer_addr,peer_port,config,add_headers,remove_headers}).
 %%
 %% API Functions
+
+
 %%
 
 start_instance() ->
 	{ok,Pid} = gen_server:start_link(?MODULE,[self()],[]),
 	{?MODULE,Pid}.
 
-
+process_hook(Pid,info,{proxy_pass_config,_}=R) ->
+	gen_server:call(Pid,R),
+	R;
 process_hook(Pid,_,{request_peer,_} = Peer) ->
 %% 	?DEBUG_MSG("Got peer: ~p~n",[Peer]),
 	gen_server:call(Pid,Peer),
 	Peer;
 process_hook(Pid,request,{request_header,ReqHdr,RequestSize}) ->
-	{peerinfo,Addr,_,_} = gen_server:call(Pid,get_peer),
+%% 	{peerinfo,Addr,_,_} = gen_server:call(Pid,get_peer),
 %% 	?DEBUG_MSG("Addr: ~p~n",[Addr]),
-	HBlock = proxylib:append_header("X-Forwarded-For: "++Addr,ReqHdr#header_block.headers),
+%% 	HBlock = proxylib:append_header("X-Forwarded-For: "++Addr,ReqHdr#header_block.headers),
+	HBlock = gen_server:call(Pid,{headermod,ReqHdr#header_block.headers}),
 	{request_header,ReqHdr#header_block{headers=HBlock},RequestSize};
 process_hook(_Ref,_Type,Data) ->
 	Data.
@@ -46,6 +51,21 @@ init([ProxyPassPid]) ->
 	erlang:monitor(process,ProxyPassPid),
 	{ok,#state{proxy_pass=ProxyPassPid}}.
 
+handle_call({proxy_pass_config,Cfg},_From,State) ->
+	RawProps = proplists:get_value(?MODULE,Cfg,[]),
+	{Props,AddHdrs,RemHdrs} = parse_props(RawProps,[],[],[]),
+	{reply,{proxy_pass_config,Cfg},State#state{config=Props,add_headers=AddHdrs,remove_headers=RemHdrs}};
+handle_call({headermod,HBlock0},_From,State) ->
+	HBlock1 =
+		case proplists:get_value(xforwardfor,State#state.config,false) of
+			false -> HBlock0;
+			_ ->
+				Addr = format_ip(State#state.peer_addr),
+				proxylib:append_header("X-Forwarded-For: "++Addr,HBlock0)
+		  end,
+	HBlock2 = proxylib:remove_headers(State#state.remove_headers,HBlock1),
+	HBlock3 = proxylib:append_headers(State#state.add_headers,HBlock2),
+	{reply,HBlock3,State};
 handle_call({request_peer,{Addr,Port}}=Peer,_From,State) ->
 %% 	?DEBUG_MSG("Storing peer: ~p~n",[Peer]),
 	{reply,Peer,State#state{peer_addr=Addr,peer_port=Port}};
@@ -106,3 +126,13 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
+
+parse_props([],PropAcc,AddAcc,RemAcc) ->
+	{PropAcc,AddAcc,RemAcc};
+parse_props([{add,Hdr}|R],PropAcc,AddAcc,RemAcc) ->
+	parse_props(R,PropAcc,[Hdr|AddAcc],RemAcc);
+parse_props([{remove,Hdr0}|R],PropAcc,AddAcc,RemAcc) ->
+	Hdr = string:to_lower(Hdr0),
+	parse_props(R,PropAcc,AddAcc,[Hdr|RemAcc]);
+parse_props([V|R],PropAcc,AddAcc,RemAcc) ->
+	parse_props(R,[V|PropAcc],AddAcc,RemAcc).

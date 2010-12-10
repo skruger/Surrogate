@@ -14,7 +14,7 @@
 
 %% -export([send/2,setopts/2]).
 
--export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,replace_header/3]).
+-export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3]).
 
 %% -export([re/1]).
 %%
@@ -30,12 +30,7 @@ header2dict([Hdr|R],Acc)->
 	case string:str(Hdr,":") of
 		Idx ->
 			Key = string:sub_string(Hdr,1,Idx-1),
-			Val0 = string:sub_string(Hdr,Idx+1),
-			Val = string:strip(Val0,left,$ ),
-			if Val0 == Val ->
-				   ?DEBUG_MSG("Header changed: ~p ~p -> ~p~n",[Key,Val0,Val]);
-			   true -> ok
-			end,
+			Val = string:strip(string:sub_string(Hdr,Idx+1),left,$ ),
 			header2dict(R,[{string:to_lower(Key),Val}|Acc])
 	end.
 
@@ -71,6 +66,10 @@ replace_header(Name,NewHdr,[Hdr|R],Acc) ->
 			replace_header(Name,NewHdr,R,[Hdr|Acc])
 	end.
 
+append_headers([],Block) ->
+	Block;
+append_headers([H|R],Block) ->
+	append_headers(R,append_header(H,Block)).
 
 append_header(Header,Block) ->
 	Block++[Header].
@@ -135,8 +134,7 @@ parse_request(Req) ->
 			HTTPPortProxy = "([[:alpha:]]*:\\/\\/[[:alnum:]-\\.]+):([[:digit:]]+)(.*)",
 			case re:run(FullPath,HTTPPortProxy,[{capture,all,list}]) of
 				{match,[_,Host,PortStr,Path]} ->
-%% 					io:format("Match: ~p~n",[Array]),
-					?DEBUG_MSG("Method: ~p~nHost: ~p~nPort: ~p~nPath: ~p~nProto: ~p~n~n",[Method,Host,PortStr,Path,Proto]),
+%% 					?DEBUG_MSG("Method: ~p~nHost: ~p~nPort: ~p~nPath: ~p~nProto: ~p~n~n",[Method,Host,PortStr,Path,Proto]),
 					{Port,_} = string:to_integer(PortStr),
 					#request_rec{method=Method,host=Host,path=Path,port=Port,protocol=Proto,proxytype=http_proxy};
 				nomatch ->
@@ -161,7 +159,7 @@ parse_response(Res) ->
 			{Code,_} = string:to_integer(CodeT),
 			#response_rec{protocol=Proto,code=Code,text=Text};
 		Err ->
-			?INFO_MSG("parse_response() Invalid response format: ~p~n~p~n",[Res,Err])
+			?WARN_MSG("parse_response() Invalid response format: ~p~n~p~n",[Res,Err])
 	end.
 
 method_has_data(Req,Res) ->
