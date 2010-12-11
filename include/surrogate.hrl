@@ -16,6 +16,8 @@
 -record(filter_host_list,{host,rule}).
 -record(filter_url_list,{host,path,rule}).
 
+-record(icap_block,{header,sections,data,buff,bodytype}).
+
 -record(proxy_userinfo,{username,password,extra_info}).
 
 -define(CRITICAL(X,Y), surrogate_log:append(0,?MODULE,lists:flatten(io_lib:format(X,Y)))).

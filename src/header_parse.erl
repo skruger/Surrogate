@@ -16,7 +16,7 @@
 %% External exports
 %% --------------------------------------------------------------------
 
--export([get_headers/2]).
+-export([get_headers/2,read_header_block/3]).
 
 %% ====================================================================
 %% External functions

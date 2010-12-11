@@ -14,7 +14,7 @@
 
 %% -export([send/2,setopts/2]).
 
--export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3]).
+-export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
 
 %% -export([re/1]).
 %%
@@ -212,6 +212,9 @@ find_binary_pattern(Subject,Pat,Pos) ->
 			<<_:1/binary,NewSub/binary>> = Subject,
 			find_binary_pattern(NewSub,Pat,Pos+1)
 	end.
+
+timestamp() ->
+	httpd_util:rfc1123_date(calendar:now_to_local_time(now())).
 
 
 get_pool_process(PoolName) ->
