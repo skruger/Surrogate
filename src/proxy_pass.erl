@@ -182,6 +182,7 @@ server_recv_11(response,State) ->
 %% 	?DEBUG_MSG("Staring proxy_read_response (~p)~n",[self()]),
 	case proxy_read_response:start(State#proxy_pass.server_sock,State#proxy_pass.request) of
 		{proxy_read_response,_} = RDrv ->
+			?DEBUG_MSG("read_response started.",[]),
 			{next_state,server_recv_11,State#proxy_pass{response_driver=RDrv}};
 		Err ->
 			?ERROR_MSG("Error starting proxy_read_response: ~p~n",[Err]),
@@ -191,14 +192,18 @@ server_recv_11(response,State) ->
 	end;
 server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr),
-%% 	?DEBUG_MSG("Got response_header (~p) ~p: ~p~n",[ResHdr#header_block.rstr,ResponseSize,self()]),
-%% 	RHdr0 = proxylib:remove_headers(["connection"],ResHdr#header_block.headers),
-%% 	RHdr = proxylib:append_header("Connection: close",RHdr0),
 	RHdr = ResHdr#header_block.headers,
 	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(RHdr)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
-	proxy_read_response:get_next(State#proxy_pass.response_driver),
-	{next_state,server_recv_11,State#proxy_pass{response=ResHdr,response_bytes_left=ResponseSize}};
+	?DEBUG_MSG("Headers sent to client. (~p)",[ResponseSize]),
+	case ResponseSize of
+		0 ->
+			gen_fsm:send_event(self(),next),
+			{next_state,proxy_finish,State};
+		_ ->
+			proxy_read_response:get_next(State#proxy_pass.response_driver),
+			{next_state,server_recv_11,State#proxy_pass{response=ResHdr,response_bytes_left=ResponseSize}}
+	end;
 %% response_bytes_left == close when connection: close set for http/1.0 force chunk encoding
 server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_left == close ->
 	gen_socket:send(State#proxy_pass.client_sock,Data),
@@ -265,7 +270,10 @@ proxy_finish(next,State) ->
 			gen_socket:close(State#proxy_pass.server_sock),
 			gen_socket:close(State#proxy_pass.client_sock),
 			{stop,normal,State}
-	end.
+	end;
+proxy_finish(Msg,State) ->
+	?WARN_MSG("Got unexpected extra message in proxy_finish state: ~p~n",[Msg]),
+	{next_state,proxy_finish,State}.
 			
 proxy_error({error,Code},State) ->
 	?DEBUG_MSG("Proxy error: ~p~n",[Code]),
@@ -284,7 +292,10 @@ proxy_error({error,Code,RText,Desc},State) ->
 	?ACCESS_LOG(Code,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,Desc),
 	gen_socket:send(State#proxy_pass.client_sock,EResponse),
 	gen_socket:close(State#proxy_pass.client_sock),
-	{stop,normal,State}.
+	{stop,normal,State};
+proxy_error(Msg,State) ->
+	?WARN_MSG("Received unexpected event in proxy_error state: ~p~n",[Msg]),
+	{next_state,proxy_error,State}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/3
