@@ -36,6 +36,7 @@ run_test() ->
 
 run() ->
 	application:start(sasl),
+	mnesia:create_schema([node()]),
 	application:start(mnesia),
     create_tables:init_tables(),
 	application:start(crypto),

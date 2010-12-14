@@ -41,15 +41,16 @@ else
 fi
 }
 
-OPTS=-proxyconfig $CONFIG \
-		-mnesia dir "$MNESIA" \
-		-errorlog "$ERRORLOG" \
-		-accesslog "$ACCESSLOG"
+OPTS="-proxyconfig $CONFIG 
+		-mnesia dir '\"$MNESIA\"' 
+		-errorlog \"$ERRORLOG\" 
+		-accesslog \"$ACCESSLOG\""
 
 start(){
 if checkpid; then
 	echo -n "Starting Surrogate... "
-	echo erl -pa $SURROGATE_PATH/ebin/ -s surrogate_app run -config surrogate -detached -pidfile $PIDFILE -name $NODENAME $OPTS
+	cd $SURROGATE_PATH
+	erl -pa $SURROGATE_PATH/ebin/ -s surrogate_app run -config surrogate -detached -pidfile $PIDFILE -name $NODENAME $OPTS
 	echo "OK"
 	RETVAL=0
 else
