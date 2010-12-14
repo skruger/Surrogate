@@ -124,6 +124,7 @@ handle_call(_Request, _From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_cast(shutdown,State) ->
+	gen_socket:close(State#state.sock),
 	?DEBUG_MSG("Stopping.~n",[]),
 	{stop,normal,State};
 handle_cast(_Msg, State) ->
