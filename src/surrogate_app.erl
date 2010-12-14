@@ -35,6 +35,27 @@ run_test() ->
 	run().
 
 run() ->
+	case init:get_argument(appmon) of
+		{ok,_} ->
+			appmon:start();
+		_ ->
+			true
+	end,
+	case init:get_argument(pidfile) of
+		{ok,[[File|_]|_]} ->
+			case filelib:is_file(File) of
+				true ->
+					io:format("Pid file already exists.  Exiting!~n",[]),
+					error_logger:error_msg("Pid file already exists.  Exiting!~n",[]),
+					halt(1),
+					true;
+				false ->
+					Pid = os:getpid(),
+					file:write_file(File,Pid)
+			end;
+		_ ->
+			ok
+	end,
 	application:start(sasl),
 	mnesia:create_schema([node()]),
 	application:start(mnesia),
