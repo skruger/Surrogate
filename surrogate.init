@@ -5,7 +5,7 @@
 
 
 CONFIG=/etc/surrogate/surrogate.conf
-SURROGATE_PATH=/usr/share/surrogate
+SURROGATE_PATH=/var/lib/surrogate
 MNESIA=$SURROGATE_PATH/db
 PIDFILE=/var/run/surrogate.pid
 LOGPATH=/var/log/surrogate
