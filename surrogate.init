@@ -4,7 +4,7 @@
 # description: Surrogate proxy service.
 
 
-CONFIG=/etc/surrogate/surrogate.conf
+CONFIG=/etc/surrogate/proxy.conf
 SURROGATE_PATH=/var/lib/surrogate
 MNESIA=$SURROGATE_PATH/db
 PIDFILE=/var/run/surrogate.pid
