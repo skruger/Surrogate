@@ -49,7 +49,7 @@ OPTS=-proxyconfig $CONFIG \
 start(){
 if checkpid; then
 	echo -n "Starting Surrogate... "
-	erl -pa $SURROGATE_PATH/ebin/ -s surrogate_app run -config surrogate -detached -pidfile $PIDFILE -name $NODENAME $OPTS
+	echo erl -pa $SURROGATE_PATH/ebin/ -s surrogate_app run -config surrogate -detached -pidfile $PIDFILE -name $NODENAME $OPTS
 	echo "OK"
 	RETVAL=0
 else
