@@ -32,12 +32,22 @@ start_link() ->
 	start_link(get_proxyconfig()).
 
 start_link(Config) ->
-	case file:consult(Config) of
-		{ok,Terms} ->
-			gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
-		Err ->
-			?CRITICAL("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
-			Err
+	try
+		case file:consult(Config) of
+			{ok,Terms} ->
+				gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
+			Err ->
+				?CRITICAL("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
+				error_logger:error_msg("Could not read config from ~p.~n~p~n",[Config,Err]),
+				Err
+		end
+	catch
+%% 		_:{error,{LNum,erl_parse,Msg}} ->
+%% 			error_logger:error_msg("~s on line ~p~n",[lists:flatten(Msg),LNum]),
+%% 			{config_error,Config,Msg,LNum};
+		_:CErr ->
+			io:format("Could not read config from ~p.~n~p~n~n~n~n",[Config,CErr]),
+			{startup_error,CErr}
 	end.
 
 get(Prop,Def) ->
@@ -47,10 +57,16 @@ reload() ->
 	gen_server:cast(?MODULE,reload).
 
 get_proxyconfig() ->
-	case init:get_argument(proxyconfig) of
-		{ok,[[Cfg|_]|_]} ->
-			string:strip(Cfg,both,$");
-		_ ->
+	try
+		case init:get_argument(proxyconfig) of
+			{ok,[[Cfg|_]|_]} ->
+				string:strip(Cfg,both,$");
+			_ ->
+				none
+		end
+	catch
+		_:Err ->
+			?CRITICAL("Error reading proxy config in get_proxyconfig(): ~p~n",[Err]),
 			none
 	end.
 
@@ -67,6 +83,7 @@ get_proxyconfig() ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init(State) ->
+	?INFO_MSG("Starting ~p.",[?MODULE]),
 	case proplists:get_value(mysql_conn,State#state.config_terms,false) of
 		{Host, Port, User, Password, Database} = MysqlConf ->
 			F = fun() ->
@@ -94,6 +111,20 @@ init(State) ->
 				  end,
 	RunFilter = fun() -> lists:foreach(StartFilter,Filters) end,
 	spawn(RunFilter),
+	case proplists:get_value(auth_mode,State#state.config_terms,false) of
+		false -> ok;
+		_ ->
+			FAuth = fun() ->
+							Spec = {proxy_auth,{proxy_auth,start_link,[]},
+									permanent,10000,worker,[]},
+							case supervisor:start_child(surrogate_sup,Spec) of
+								{error,_} = Autherr ->
+									?CRITICAL("Starting auth failed: ~p~n~p~n",[Autherr,Spec]);
+								_ -> ?DEBUG_MSG("Auth process started.~n",[])
+							end
+					end,
+			spawn(FAuth)
+	end,
 	LogLevel = proplists:get_value(log_level,State#state.config_terms,5),
 	surrogate_log:log_level(LogLevel),
     ?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),

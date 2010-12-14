@@ -71,6 +71,7 @@ get_errorlog() ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+	try
 	ErrLog = case get_errorlog() of
 				 none ->
 					 undefined;
@@ -94,7 +95,12 @@ init([]) ->
 								undefined
 						end
 				end,
-	{ok,#state{errorlog=ErrLog,accesslog=AccessLog,log_level=5}};
+	{ok,#state{errorlog=ErrLog,accesslog=AccessLog,log_level=5}}
+	catch
+		_:Err ->
+			io:format("Error starting ~p: ~p~n",[?MODULE,Err]),
+			error_logger:error_msg("Error starting ~p: ~p~n",[?MODULE,Err])
+	end;
 init([FileName]) ->
 	case file:open(FileName,[write,append]) of
 		{ok,File} ->
