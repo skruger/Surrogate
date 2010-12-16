@@ -19,7 +19,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {socket,type,controlling_process}).
+-record(state, {socket,type,controlling_process,controlling_process_mon}).
 
 %% ====================================================================
 %% External functions
@@ -58,7 +58,18 @@ recv({?MODULE,Sock},Length,Timeout) ->
 	gen_server:call(Sock,{recv,Length,Timeout},Timeout).
 
 close({?MODULE,Sock}) ->
-	gen_server:call(Sock,{close}).
+	try
+	
+		gen_server:call(Sock,{close})
+	catch
+		_:{R,_} when (R == noproc) or (R == normal) ->
+%% 			?DEBUG_MSG("Close error ~p already gone returning ok.~n",[?MODULE]),
+			ok;
+		_:Err ->
+			?WARN_MSG("~p:close() error: ~p~n",[?MODULE,Err]),
+			{error,Err}
+	end.
+
 
 peername({?MODULE,Sock}) ->
 	gen_server:call(Sock,{peername}).
@@ -79,7 +90,8 @@ info({?MODULE,Sock}) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([Socket,Type,Pid]) ->
-	{ok, #state{socket=Socket,type=Type,controlling_process=Pid}}.
+	Mon = erlang:monitor(process,Pid),
+	{ok, #state{socket=Socket,type=Type,controlling_process=Pid,controlling_process_mon=Mon}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -92,6 +104,7 @@ init([Socket,Type,Pid]) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_call({destroy,Pid},From,State) when State#state.type == gen_tcp ->
+	erlang:demonitor(State#state.controlling_process_mon),
 	ok = gen_tcp:controlling_process(State#state.socket,Pid),
 	Reply = {ok,State#state.type,State#state.socket},
 	gen_server:reply(From,Reply),
@@ -100,7 +113,9 @@ handle_call(info,From,State) ->
 	?INFO_MSG("Socket info requested by ~p~n~p~n",[From,State]),
 	{reply,State,State};
 handle_call({controlling_process,Pid},_From,State) when is_pid(Pid) ->
-	{reply,ok,State#state{controlling_process=Pid}};
+	erlang:demonitor(State#state.controlling_process_mon),
+	Mon = erlang:monitor(process,Pid),
+	{reply,ok,State#state{controlling_process=Pid,controlling_process_mon=Mon}};
 %% handle_call(R,From,State) when State#state.controlling_process /= From ->
 %% 	?ERROR_MSG("Error, request made by non-controlling_process (~p)~n~p~n~p~n",[From,State,R]),
 %% 	{reply,{error,eperm},State};
@@ -139,9 +154,16 @@ handle_call({peername},_From,State) when State#state.type == gen_tcp ->
 	R = inet:peername(State#state.socket),
 	{reply,R,State};
 handle_call({close},_From,State) when State#state.type == gen_tcp ->
+	try
 	R = gen_tcp:close(State#state.socket),
-	gen_server:cast(self(),stop),
-	{reply,R,State}.
+%%  	?DEBUG_MSG("Close ~p~n",[R]),
+%% 	gen_server:cast(self(),stop),
+	{reply,R,State}
+	catch
+		_:Err ->
+			?ERROR_MSG("Error closing socket: ~p~n",[Err]),
+			{reply,{error,Err}}
+	end.
 
 
 %% --------------------------------------------------------------------
@@ -168,13 +190,18 @@ handle_info({T,_Socket,Data},State) when (T == ssl) or (T == tcp) ->
 	State#state.controlling_process ! P,
 	{noreply,State};
 handle_info({T,_Socket},State) when (T==tcp_closed) or (T == ssl_closed) ->
+%% 	?DEBUG_MSG("~p: exiting.~n",[T]),
 	State#state.controlling_process ! {gen_socket_closed,{?MODULE,self()}},
 	{stop,normal,State};
-handle_info({T,_Socket,Reason},State) when (T==tcp_error) or (T == ssl_error) ->
+handle_info({T,_Socket,Reason}=P,State) when (T==tcp_error) or (T == ssl_error) ->
 	State#state.controlling_process ! {gen_socket_error,{?MODULE,self()},Reason},
+	?WARN_MSG("~p closing: ~p exiting.~n",[?MODULE,P]),
 	{noreply,State};
+handle_info({'DOWN',_,process,Pid,_Reason},State) when State#state.controlling_process == Pid ->
+%% 	?DEBUG_MSG("~p owner (~p) exited.  Closing ~p~n",[?MODULE,Pid,self()]),
+	{stop,normal,State};
 handle_info(Info, State) ->
-	?INFO_MSG("Unexpected info in ~p: ~p~n",[?MODULE,Info]),
+	?INFO_MSG("Unexpected info in ~p: ~p~n~p~n",[?MODULE,Info,State]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------

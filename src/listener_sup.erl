@@ -93,6 +93,26 @@ listen_childspec([L|R],Acc) ->
 			Spec = {Name,{balance_http,start_link,[S]},
 					permanent, 2000,worker,[]},
 			listen_childspec(R,[Spec|Acc]);
+		{http_management_api,RawBind,Port,Proplist} ->
+%% 			{ok,HTTPD} = inets:start(httpd,[{port,8888},{bind_address,{0,0,0,0}},{server_name,"shaunkruger.com"},{server_root,"/tmp"},{document_root,"/tmp/docs"}]).
+			{Bind,BindStr} = case RawBind of
+								 {ip,{A1,A2,A3,A4}=B} ->
+									 {B,lists:flatten(io_lib:format("~p.~p.~p.~p:~p",[A1,A2,A3,A4,Port]))};
+								 A when is_list(A) ->
+									 {A,lists:flatten(io_lib:format("~s:~p",[A,Port]))};
+								 _ ->
+									 ?CRITICAL("Invalid Bind address format: ~p~n",[RawBind]),
+									 error
+							 end,
+			SRoot = "/tmp/http-"++BindStr,
+			SDocRoot = SRoot++"/htdocs",
+			file:make_dir(SRoot),
+			file:make_dir(SDocRoot),
+			Args = [httpd,Proplist++[{port,Port},{bind_address,Bind},{server_root,SRoot},{document_root,SDocRoot},{server_name,net_adm:localhost()}]],
+			Name = list_to_atom("management_api_"++BindStr),
+			Spec = {Name,{inets,start,Args},
+					permanent,2000,worker,[]},
+			listen_childspec(R,[Spec|Acc]);
 		Undef ->
 			?ERROR_MSG("Unsupported listen spec:~n~p~n",[Undef]),
 			listen_childspec(R,Acc)

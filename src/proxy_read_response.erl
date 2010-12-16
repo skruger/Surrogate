@@ -65,17 +65,44 @@ get_next({?MODULE,Pid}) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 
-init([State0]) ->
-	erlang:monitor(process,State0#state.parent),
+init([State]) ->
+	erlang:monitor(process,State#state.parent),
 %% 	?DEBUG_MSG("Staring: ~p~n",[(State#state.request)#header_block.request]),
-	Dict = proxylib:header2dict((State0#state.headers)#header_block.headers),
-	HBlock0 = (State0#state.headers),
+	
+	gen_fsm:send_event(self(),run),
+	{NextState,State1} =
+	case proxylib:method_has_data(State#state.request,State#state.headers) of
+		true ->
+			Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
+			case dict:find("transfer-encoding",Dict) of
+				{ok,"chunked"} ->
+					{send_headers,State#state{size=chunked,bytes_sent=0}};
+				NoChunk ->
+					case dict:find("connection",Dict) of
+						{ok,"close"} ->
+							{send_headers,State#state{size=close,bytes_sent=0}};
+						NoConn ->
+							case dict:find("content-length",Dict) of
+								{ok,LenStr} ->
+									{Len,_} = string:to_integer(LenStr),
+									{send_headers,State#state{size=Len,bytes_sent=0}};
+								NoLen ->
+									?ERROR_MSG("No valid size headers:~nchunked encoding: ~p~nConnection: close: ~p~nContent-length: ~p~nCan not receive data!~n",[NoChunk,NoConn,NoLen]),
+									{stop,error}
+							end
+					end	
+			end;
+		_ ->
+			{send_headers,State#state{size=0,bytes_sent=0}}
+	end,
+	Dict0 = proxylib:header2dict((State1#state.headers)#header_block.headers),
+	HBlock0 = (State1#state.headers),
 	{Encoding,Headers} =
-		case dict:find("content-encoding",Dict) of
-			{ok,"gzip"} ->
-%% 				?DEBUG_MSG("gzip encoded.~n",[]),
-%% 				{gzip,HBlock0#header_block.headers};
-				{gzip,proxylib:remove_header("content-encoding",HBlock0#header_block.headers)};
+		case dict:find("content-encoding",Dict0) of
+ 			{ok,"gzip"} ->
+ 				GZHdr = proxylib:remove_headers(["content-encoding","content-length","connection","transfer-encoding"],HBlock0#header_block.headers),
+ 				{gzip,proxylib:append_header("Transfer-Encoding: chunked",GZHdr)};
+%%   				{gzip,proxylib:remove_headers(["content-encoding"],HBlock0#header_block.headers)};
 			{ok,Other} ->
 				?WARN_MSG("Unsupported content-encoding: ~p~n",[Other]),
 				{plain,HBlock0#header_block.headers};
@@ -85,36 +112,21 @@ init([State0]) ->
 		end,
 %% 	?DEBUG_MSG("Started with: ~p~n~nEnded with:~p~n",[HBlock0#header_block.headers,Headers]),
 	HBlock = HBlock0#header_block{headers = Headers},
-	State = State0#state{encoding=Encoding,headers=HBlock},
-%% 	?DEBUG_MSG("State: ~p~n",[State]),
-	gen_fsm:send_event(self(),run),
-	case proxylib:method_has_data(State#state.request,State#state.headers) of
-		true ->
-			case dict:find("transfer-encoding",Dict) of
-				{ok,"chunked"} ->
-					{ok,send_headers,State#state{size=chunked,bytes_sent=0}};
-				NoChunk ->
-					case dict:find("connection",Dict) of
-						{ok,"close"} ->
-							{ok,send_headers,State#state{size=close,bytes_sent=0}};
-						NoConn ->
-							case dict:find("content-length",Dict) of
-								{ok,LenStr} ->
-									{Len,_} = string:to_integer(LenStr),
-									{ok,send_headers,State#state{size=Len,bytes_sent=0}};
-								NoLen ->
-									?ERROR_MSG("No valid size headers:~nchunked encoding: ~p~nConnection: close: ~p~nContent-length: ~p~nCan not receive data!~n",[NoChunk,NoConn,NoLen]),
-									{stop,error}
-							end
-					end	
-			end;
+	StateOut = State1#state{encoding=Encoding,headers=HBlock},
+	case NextState of
+		error ->
+			{error,StateOut};
 		_ ->
-			{ok,send_headers,State#state{size=0,bytes_sent=0}}
+			{ok,NextState,StateOut}
 	end.
 
 send_headers(run,State) ->
 %% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
-	State#state.parent ! {response_header,State#state.headers,State#state.size},
+	ResponseSize = case State#state.encoding of
+			   gzip -> chunked;
+			   _ -> State#state.size
+		   end,
+	State#state.parent ! {response_header,State#state.headers,ResponseSize},
 %% 	Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
 	case State#state.size of
 		chunked ->
@@ -124,7 +136,7 @@ send_headers(run,State) ->
 			{next_state,read_response,State};
 		0 ->
 			{next_state,read_response,State};
-		Size when Size > 0 ->
+		Size when Size > 0 -> 
 %% 			?DEBUG_MSG("Starting with known size: ~p~n",[Size]),
 			{next_state,read_response,State};
 		Other ->
@@ -285,7 +297,7 @@ handle_info({gen_socket,_,_}=Data, StateName, StateData) ->
 	gen_fsm:send_event(self(),Data),
     {next_state, StateName, StateData};
 handle_info({'DOWN',_,process,_Pid,_},_StateName,State) ->
-	?DEBUG_MSG("Stopping ~p because proxy_pass went away.~n",[?MODULE]),
+%% 	?DEBUG_MSG("Stopping ~p because proxy_pass went away.~n",[?MODULE]),
 	{stop,normal,State};
 handle_info(Other,StateName,StateData) ->
 	?INFO_MSG("Got unexpected info in state: ~p~n~p~n",[StateName,Other]),

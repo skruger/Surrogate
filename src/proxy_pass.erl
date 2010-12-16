@@ -182,7 +182,6 @@ server_recv_11(response,State) ->
 %% 	?DEBUG_MSG("Staring proxy_read_response (~p)~n",[self()]),
 	case proxy_read_response:start(State#proxy_pass.server_sock,State#proxy_pass.request) of
 		{proxy_read_response,_} = RDrv ->
-			?DEBUG_MSG("read_response started.",[]),
 			{next_state,server_recv_11,State#proxy_pass{response_driver=RDrv}};
 		Err ->
 			?ERROR_MSG("Error starting proxy_read_response: ~p~n",[Err]),
@@ -195,7 +194,7 @@ server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	RHdr = ResHdr#header_block.headers,
 	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(RHdr)],
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
-	?DEBUG_MSG("Headers sent to client. (~p)",[ResponseSize]),
+%% 	?DEBUG_MSG("Headers sent to client. (~p)",[ResponseSize]),
 	case ResponseSize of
 		0 ->
 			gen_fsm:send_event(self(),next),
@@ -209,8 +208,8 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	gen_socket:send(State#proxy_pass.client_sock,Data),
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
-server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == close ->
-%% 	?DEBUG_MSG("Connection closed: ~p~n",[self()]),
+server_recv_11({end_response_data,Size},State) when State#proxy_pass.response_bytes_left == close ->
+%% 	?DEBUG_MSG("Connection closed: ~p (~p bytes)~n",[self(),Size]),
 	gen_socket:close(State#proxy_pass.server_sock),
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State};
