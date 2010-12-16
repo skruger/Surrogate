@@ -90,6 +90,7 @@ client_send_11(request,State) ->
 		end
  	catch
  		_:{error,closed} -> {stop,normal,State};
+		_:{killed,_} -> {stop,normal,State};
  		_:ErrCatch ->
  			?ERROR_MSG("Error receiving headers: ~p (Keepalive: ~p)~n",[ErrCatch,State#proxy_pass.keepalive]),
  			{stop,normal,State}
@@ -208,7 +209,7 @@ server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_
 	gen_socket:send(State#proxy_pass.client_sock,Data),
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
-server_recv_11({end_response_data,Size},State) when State#proxy_pass.response_bytes_left == close ->
+server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_bytes_left == close ->
 %% 	?DEBUG_MSG("Connection closed: ~p (~p bytes)~n",[self(),Size]),
 	gen_socket:close(State#proxy_pass.server_sock),
 	gen_socket:close(State#proxy_pass.client_sock),

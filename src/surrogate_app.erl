@@ -5,7 +5,7 @@
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
-
+-include("surrogate.hrl").
 %% --------------------------------------------------------------------
 %% Behavioural exports
 %% --------------------------------------------------------------------
@@ -65,7 +65,14 @@ run() ->
 	application:start(public_key),
 	application:start(ssl),
 	application:load(surrogate),
-	application:start(surrogate).
+	case application:start(surrogate) of
+		ok ->
+			?DEBUG_MSG("~p started.~n",[?MODULE]),
+			ok;
+		Err ->
+			error_logger:error_msg("Surrogate was unable to start: ~p~n",[Err]),
+			Err
+	end.
 
 mnesia_init() ->
 	mnesia:create_schema([node()]).

@@ -72,51 +72,51 @@ init([]) ->
 listen_childspec([],Acc) ->
 	Acc;
 listen_childspec([L|R],Acc) ->
+	SpecList = make_childspec(L),
+	listen_childspec(R,Acc++SpecList).
+	
+make_childspec(L) ->
 	case L of
 		{proxy_transparent,{ip,{A1,A2,A3,A4}},Port,_} = S ->
 			Name = list_to_atom(lists:flatten(io_lib:format("~p_~p.~p.~p.~p:~p",[proxy_transparent,A1,A2,A3,A4,Port]))),
 			Spec = {Name,{proxy_transparent,start_link,[S]},
 					permanent, 10000,worker,[]},
-			listen_childspec(R,[Spec|Acc]);
+			[Spec];
 		{proxy_socks45,{ip,{A1,A2,A3,A4}},Port,_} = S ->
 			Name = list_to_atom(lists:flatten(io_lib:format("~p_~p.~p.~p.~p:~p",[proxy_socks45,A1,A2,A3,A4,Port]))),
 			Spec = {Name,{proxy_socks45,start_link,[S]},
 					permanent,10000,worker,[]},
-			listen_childspec(R,[Spec|Acc]);
+			[Spec];
 		{Bal,{ip,{A1,A2,A3,A4}},Port,_} = S when Bal == balance_http ->
 			Name = list_to_atom(lists:flatten(io_lib:format("~p_~p.~p.~p.~p:~p",[Bal,A1,A2,A3,A4,Port]))),
 			Spec = {Name,{balance_http,start_link,[S]},
 					permanent, 2000,worker,[]},
-			listen_childspec(R,[Spec|Acc]);
+			[Spec];
 		{Bal,{ip,{A1,A2,A3,A4}},Port,_,_,_} = S when Bal == balance_https ->
 			Name = list_to_atom(lists:flatten(io_lib:format("~p_~p.~p.~p.~p:~p",[Bal,A1,A2,A3,A4,Port]))),
 			Spec = {Name,{balance_http,start_link,[S]},
 					permanent, 2000,worker,[]},
-			listen_childspec(R,[Spec|Acc]);
-		{http_management_api,RawBind,Port,Proplist} ->
-%% 			{ok,HTTPD} = inets:start(httpd,[{port,8888},{bind_address,{0,0,0,0}},{server_name,"shaunkruger.com"},{server_root,"/tmp"},{document_root,"/tmp/docs"}]).
-			{Bind,BindStr} = case RawBind of
-								 {ip,{A1,A2,A3,A4}=B} ->
-									 {B,lists:flatten(io_lib:format("~p.~p.~p.~p:~p",[A1,A2,A3,A4,Port]))};
-								 A when is_list(A) ->
-									 {A,lists:flatten(io_lib:format("~s:~p",[A,Port]))};
-								 _ ->
-									 ?CRITICAL("Invalid Bind address format: ~p~n",[RawBind]),
-									 error
-							 end,
-			SRoot = "/tmp/http-"++BindStr,
-			SDocRoot = SRoot++"/htdocs",
-			file:make_dir(SRoot),
-			file:make_dir(SDocRoot),
-			Args = [httpd,Proplist++[{port,Port},{bind_address,Bind},{server_root,SRoot},{document_root,SDocRoot},{server_name,net_adm:localhost()}]],
+			[Spec];
+		{http_management_api,RawBind,Port,_Proplist} = S ->
+			BindStr = case RawBind of
+						  {ip,{A1,A2,A3,A4}} ->
+							  lists:flatten(io_lib:format("~p.~p.~p.~p:~p",[A1,A2,A3,A4,Port]));
+						  A when is_list(A) ->
+							  lists:flatten(io_lib:format("~s:~p",[A,Port]));
+						  _ ->
+							  ?CRITICAL("Invalid Bind address format: ~p~n",[RawBind]),
+							  error
+					  end,
 			Name = list_to_atom("management_api_"++BindStr),
-			Spec = {Name,{inets,start,Args},
-					permanent,2000,worker,[]},
-			listen_childspec(R,[Spec|Acc]);
+			Spec = {Name,{proxy_manager,start,[S]},
+					permanent,30000,worker,[]},
+			[Spec];
 		Undef ->
 			?ERROR_MSG("Unsupported listen spec:~n~p~n",[Undef]),
-			listen_childspec(R,Acc)
+			[]
 	end.
+
+
 
 %% 
 %% proxy_childspecs(ConfName) ->
