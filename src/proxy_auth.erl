@@ -18,6 +18,8 @@
 %% External exports
 -export([start_link/0,check_user/2,is_user/1,add_user/2,list_users/0,delete_user/1]).
 
+-export([apicmd/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -29,6 +31,14 @@
 
 start_link() ->
 	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+
+apicmd(["add_user",User,Pass]) ->
+	add_user(User,Pass);
+apicmd(Args) ->
+	?DEBUG_MSG("Got unexpected args: ~p~n",[Args]),
+	{error,invalid}.
+	
+
 
 %% ====================================================================
 %% Server functions
@@ -56,6 +66,7 @@ delete_user(User) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+	surrogate_api_cmd:register("proxy_auth_cmd",#api_command{module=?MODULE,function=apicmd}),
 	Mode = proxyconf:get(auth_mode,mnesia),
     {ok, #state{mode=Mode}}.
 

@@ -57,6 +57,12 @@ init([]) ->
 		   10000,
 		   worker,
 		   []},
+		  {surrogate_api_cmd,
+		   {surrogate_api_cmd,start_link,[]}, %%"Surrogate/surrogate.log","Surrogate/access.log"
+		   permanent,
+		   10000,
+		   worker,
+		   []},
 		  {proxyconf,
 		   {proxyconf,start_link,[]}, %% "Surrogate/conf/proxy.conf"
 		   permanent,

@@ -1,9 +1,9 @@
-#Thu Dec 02 13:05:28 MST 2010
-backend_version=R13B
+#Thu Dec 16 15:56:55 MST 2010
+backend_version=R12B
 compiler/debug_info=true
 eclipse.preferences.version=1
 external_includes=
 external_modules=
-include_dirs=src/mysql/src;include
+include_dirs=src/mysql/src;include;
 output_dir=ebin
-source_dirs=src/mysql/src;src
+source_dirs=src/mysql/src;src;
