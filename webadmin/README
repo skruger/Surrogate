@@ -1,0 +1,22 @@
+Random notes about webadmin, symfony and Doctrine ORM....
+
+This admin system uses Symfony 1.4.8 for it's ORM and admin generators
+for layout and templating it uses the 960 grid system for ease of layout and developement
+http://960.gs/
+The frontend module in symfony is really the admin module. In most other sites you would have the frontend as your 
+outside view and then create an "application" called backend then you would access backend.php for all your admin work.
+
+with php 5.2.12 or better (developed with 5.3) you should be able to
+
+php ./symfony cc
+mysqladmin create surrogate_webadmin
+mysql surrogate_webadmin < surrogate_webadmin.sql
+
+or you can do it all with symfony
+php ./symfony cc
+php ./symfony project:permissions
+php ./symfony doctrine:build --all
+
+Run symfony script by it's self to see all the options, the file surrogate_webadmin is just a dump of mysql
+
+-Leif

@@ -1,0 +1,5 @@
+cache/frontend/dev/*
+cache/frontend/prod/*
+cache/.pear/
+cache/project_autoload.cache
+log/*
