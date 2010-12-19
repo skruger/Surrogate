@@ -1,0 +1,34 @@
+body {
+        background: #123;
+        border-top: 5px solid #000;
+        color: #333;
+        font-size: 11px;
+        padding: 20px 0 40px;
+}
+
+a {
+        color: #fff;
+        text-decoration: none;
+}
+
+a:hover {
+        text-decoration: underline;
+}
+
+h1 {
+        font-family: Georgia, serif;
+        font-weight: normal;
+        text-align: center;
+}
+
+h2 {
+        padding: 20px 0 0;
+        text-align: center;
+}
+
+p {
+        border: 1px solid #666;
+        overflow: hidden;
+        padding: 10px 0;
+        text-align: center;
+}

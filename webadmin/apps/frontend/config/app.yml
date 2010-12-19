@@ -3,3 +3,7 @@
 
 # default values
 #all:
+
+api:
+  username: admin
+  password: password

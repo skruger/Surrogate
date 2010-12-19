@@ -35,7 +35,14 @@ all:
 
     # Enable the database manager
     use_database:           true
+    i18n:                   true
+# Helpers included in all templates by default
+    standard_helpers:       [Partial, Cache, I18N]
 
+  .actions:
+    error_404_module:       internal   # To be called when a 404 error is raised
+    error_404_action:       error404  # Or when the requested URL doesn't match any route
+    
     login_module:           sfGuardAuth
     login_action:           signin
 

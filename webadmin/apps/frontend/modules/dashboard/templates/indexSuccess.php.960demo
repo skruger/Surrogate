@@ -14,7 +14,7 @@
 </style>
 <div class="container_12">
 	<h2>
-        <?php echo __('Surrogate Proxy Admin Dashboard'); ?>
+		12 Column Grid
 	</h2>
 	<div class="grid_12">
 		<p>
