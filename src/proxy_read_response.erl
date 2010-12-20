@@ -97,6 +97,7 @@ init([State]) ->
 		_ ->
 			{send_headers,State#state{size=0,bytes_sent=0}}
 	end,
+	?DEBUG_MSG("Size: ~p~n",[State1#state.size]),
 	Dict0 = proxylib:header2dict((State1#state.headers)#header_block.headers),
 	HBlock0 = (State1#state.headers),
 	{Encoding,Headers} =
@@ -135,10 +136,11 @@ send_headers(run,State) ->
 %% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
 	Protocol = ((State#state.headers)#header_block.response)#response_rec.protocol,
 	ResponseSize = case State#state.encoding of
+			   gzip when (Protocol == "HTTP/1.0") or (State#state.size == close) -> close;
 			   gzip when (Protocol == "HTTP/1.1") -> chunked;
-			   gzip when (Protocol == "HTTP/1.0") -> close;
 			   _ -> State#state.size
 		   end,
+	?DEBUG_MSG("ResponseSize: ~p~nEncoding: ~p~nProtocol: ~p~n",[ResponseSize,State#state.encoding,Protocol]),
 	State#state.parent ! {response_header,State#state.headers,ResponseSize},
 %% 	Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
 	case State#state.size of
