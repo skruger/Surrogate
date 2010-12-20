@@ -41,13 +41,15 @@
 start(Sock,Request) ->
 	ParentPid = self(),
 %% 	?DEBUG_MSG("~p started by: ~p~n",[?MODULE,ParentPid]),
-	Hdr = header_parse:get_headers(Sock,response),
-	case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body,request=Request}],[]) of
-		{ok,RPid} ->
-			gen_socket:controlling_process(Sock,RPid),
-			{?MODULE,RPid};
-		Err ->
-			Err
+	case header_parse:get_headers(Sock,response) of
+		Hdr ->
+			case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body,request=Request}],[]) of
+				{ok,RPid} ->
+					gen_socket:controlling_process(Sock,RPid),
+					{?MODULE,RPid};
+				Err ->
+					Err
+			end
 	end.
 
 get_next({?MODULE,Pid}) ->
@@ -100,8 +102,17 @@ init([State]) ->
 	{Encoding,Headers} =
 		case dict:find("content-encoding",Dict0) of
  			{ok,"gzip"} ->
- 				GZHdr = proxylib:remove_headers(["content-encoding","content-length","connection","transfer-encoding"],HBlock0#header_block.headers),
- 				{gzip,proxylib:append_header("Transfer-Encoding: chunked",GZHdr)};
+				case State1#state.size of
+					Vary when (Vary == close) or (Vary == chunked )->
+						GZHdr = proxylib:remove_headers(["content-encoding","content-length"],HBlock0#header_block.headers),
+						{gzip,GZHdr};
+					ResLen when is_integer(ResLen) and ((HBlock0#header_block.response)#response_rec.protocol == "HTTP/1.1") ->
+ 						GZHdr = proxylib:remove_headers(["content-encoding","content-length","connection","transfer-encoding"],HBlock0#header_block.headers),
+						{gzip,proxylib:append_header("Transfer-Encoding: chunked",GZHdr)};
+					ResLen when is_integer(ResLen) and ((HBlock0#header_block.response)#response_rec.protocol == "HTTP/1.0") ->
+ 						GZHdr = proxylib:remove_headers(["content-encoding","content-length","connection","transfer-encoding"],HBlock0#header_block.headers),
+						{gzip,proxylib:append_header("Connection: Close",GZHdr)}
+				end;
 %%   				{gzip,proxylib:remove_headers(["content-encoding"],HBlock0#header_block.headers)};
 			{ok,Other} ->
 				?WARN_MSG("Unsupported content-encoding: ~p~n",[Other]),
@@ -122,8 +133,10 @@ init([State]) ->
 
 send_headers(run,State) ->
 %% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
+	Protocol = ((State#state.headers)#header_block.response)#response_rec.protocol,
 	ResponseSize = case State#state.encoding of
-			   gzip -> chunked;
+			   gzip when (Protocol == "HTTP/1.1") -> chunked;
+			   gzip when (Protocol == "HTTP/1.0") -> close;
 			   _ -> State#state.size
 		   end,
 	State#state.parent ! {response_header,State#state.headers,ResponseSize},

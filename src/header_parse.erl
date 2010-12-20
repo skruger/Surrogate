@@ -51,17 +51,22 @@ read_header_block(<<HdrData/binary>>,Sock,Type) ->
 			end;
 		Idx ->
 			<<Hdr:Idx/binary,"\r\n\r\n",Body/binary>> = HdrData,
-			{ok,Request,HdrList} = proxylib:split_headers(binary_to_list(Hdr)),
-			case Type of
-				request ->
-					Req = proxylib:parse_request(Request),
-					#header_block{headers=HdrList,body=Body,request=Req,rstr=Request};
-				response ->
-					Res = proxylib:parse_response(Request),
-					#header_block{headers=HdrList,body=Body,response=Res,rstr=Request};
-				BadType ->
-					?ERROR_MSG("get_headers() failed with invalid type: ~p~n",[BadType]),
-					throw(nomatch)
+			case proxylib:split_headers(binary_to_list(Hdr)) of
+				{ok,Request,HdrList} ->
+					case Type of
+						request ->
+							Req = proxylib:parse_request(Request),
+							#header_block{headers=HdrList,body=Body,request=Req,rstr=Request};
+						response ->
+							Res = proxylib:parse_response(Request),
+							#header_block{headers=HdrList,body=Body,response=Res,rstr=Request};
+						BadType ->
+							?ERROR_MSG("get_headers() failed with invalid type: ~p~n",[BadType]),
+							throw(nomatch)
+					end;
+				{error,SplitErr} ->
+					?WARN_MSG("Error in split_headers: ~p~n~p~n",[SplitErr,binary_to_list(Hdr)]),
+					throw(SplitErr)
 			end
 	end.
 			
