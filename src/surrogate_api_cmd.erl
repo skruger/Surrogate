@@ -37,7 +37,7 @@ register(Name,Cmd) ->
 exec(Name,Args) ->
 	case gen_server:call(?MODULE,{get_command,Name}) of
 		{ok,#api_command{module=Mod,function=Fun}} ->
-			?DEBUG_MSG("apply(~p,~p,~p)~n",[Mod,Fun,Args]),
+%% 			?DEBUG_MSG("apply(~p,~p,~p)~n",[Mod,Fun,Args]),
 			erlang:apply(Mod,Fun,[Args]);
 		Err ->
 			Err

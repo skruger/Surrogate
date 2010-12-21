@@ -23,8 +23,8 @@ curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
 
 $reqAuth = "\"command\":\"proxy_auth_cmd\",\"auth\":{\"username\":\"user\",\"password\":\"mypasswd\"},";
 $reqStr = "{ $reqAuth \"authcmd\":\"list_users\"}";
-$reqStr = "{ $reqAuth \"authcmd\":\"add_user\",\"username\":\"test\",\"password\":\"testing567\"}";
-$reqStr = "{ $reqAuth \"authcmd\":\"is_user\",\"username\":\"test\"}";
+//$reqStr = "{ $reqAuth \"authcmd\":\"add_user\",\"username\":\"test\",\"password\":\"testing567\"}";
+//$reqStr = "{ $reqAuth \"authcmd\":\"is_user\",\"username\":\"test\"}";
 
 curl_setopt($curl,CURLOPT_POSTFIELDS,$reqStr);
 
@@ -34,6 +34,6 @@ $response = curl_exec($curl);
 
 curl_close($curl);
 
-echo "Got response:\n$response";
+echo "Got response:\n$response\n";
 
 ?>

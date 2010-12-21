@@ -31,7 +31,8 @@ xmlcmd(Sess,Env,Input) ->
 				{command,CmdName,CmdArg} = E = xget_command(xfind_element(command,Parse#xmlElement.content,[])),
 				CmdRet = surrogate_api_cmd:exec(CmdName,CmdArg),
 				Info = io_lib:format("Env: ~p~nInput: ~p~n~p~n~p~n~p~n",[Env,Input,AuthInfo,E,CmdRet]),
-				mod_esi:deliver(Sess,lists:flatten(["Content-type: text/plain\r\n\r\n",Info]))
+				?DEBUG_MSG("Info: ~p~n",Info),
+				mod_esi:deliver(Sess,lists:flatten(["Content-type: text/plain\r\n\r\n",CmdRet]))
 		end
 	catch
 		_:Err ->
@@ -50,9 +51,15 @@ json(Sess,Env,Input) ->
 				ReqInfo = method_auth_info(Parse,[]),
 				case proplists:get_value(command,ReqInfo,false) of
 					Command ->
-						CmdRet = surrogate_api_cmd:exec(Command,Input),
-						Info = io_lib:format("Env: ~p~nInput: ~p~n~p~n~p~n~p~n",[Env,Input,Parse,CmdRet,json2proplist(Parse)]),
-						mod_esi:deliver(Sess,lists:flatten(["Content-type: text/plain\r\n\r\n",Info]))
+						CmdRet = 
+							case surrogate_api_cmd:exec(Command,Input) of
+								R when is_list(R) ->
+									R;
+								R ->
+									io_lib:format("~p",[R])
+							end,
+						?DEBUG_MSG("Env: ~p~nInput: ~p~n~p~n~p~n~p~n",[Env,Input,Parse,CmdRet,json2proplist(Parse)]),
+						mod_esi:deliver(Sess,lists:flatten(["Content-type: text/plain\r\n\r\n",CmdRet]))
 				end
 		end
 	catch
