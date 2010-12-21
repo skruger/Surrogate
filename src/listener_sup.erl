@@ -97,6 +97,11 @@ make_childspec(L) ->
 			Spec = {Name,{balance_http,start_link,[S]},
 					permanent, 2000,worker,[]},
 			[Spec];
+		{rest_rpc,{ip,{A1,A2,A3,A4}},Port,_Opts} = S ->
+			Name = list_to_atom(lists:flatten(io_lib:format("rest_rpc_~p.~p.~p.~p:~p",[A1,A2,A3,A4,Port]))),
+			Spec = {Name,{rest_rpc,start_link,[S]},
+					permanent, 2000,worker,[]},
+			[Spec];
 		{http_management_api,RawBind,Port,_Proplist} = S ->
 			BindStr = case RawBind of
 						  {ip,{A1,A2,A3,A4}} ->

@@ -32,12 +32,22 @@
 start_link() ->
 	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
 
-apicmd(["add_user",User,Pass]) ->
-	add_user(User,Pass);
-apicmd(Args) ->
-	?DEBUG_MSG("Got unexpected args: ~p~n",[Args]),
-	{error,invalid}.
-	
+apicmd(Json) ->
+	JsonList = surrogate_api:json2proplist(Json),
+	case proplists:get_value(authcmd,JsonList,false) of
+		"list_users" ->
+			string:join(list_users(),"\n");
+		"add_user" ->
+			User = proplists:get_value(username,JsonList),
+			Pass = proplists:get_value(password,JsonList),
+			add_user(User,Pass);
+		"is_user" ->
+			User = proplists:get_value(username,JsonList),
+			is_user(User);
+		false ->
+			"No authcmd given."
+	end.
+			
 
 
 %% ====================================================================
