@@ -36,16 +36,38 @@ apicmd(Json) ->
 	JsonList = surrogate_api:json2proplist(Json),
 	case proplists:get_value(authcmd,JsonList,false) of
 		"list_users" ->
-			string:join(list_users(),"\n");
+			iolist_to_binary(mochijson2:encode(
+							   {struct,[{status,<<"ok">>},
+										{users,lists:map(fun(F) -> list_to_binary(F) end,list_users() )}]}));
 		"add_user" ->
 			User = proplists:get_value(username,JsonList),
 			Pass = proplists:get_value(password,JsonList),
-			add_user(User,Pass);
+			case add_user(User,Pass) of
+				ok ->
+					iolist_to_binary(mochijson2:encode({struct,[{status,<<"ok">>}]}));
+				Err ->
+					Msg = lists:flatten(io_lib:format("add_user error: ~p",[Err])),
+					iolist_to_binary(mochijson2:encode({struct,[{status,<<"error">>},{message,list_to_binary(Msg)}]}))
+			end;
 		"is_user" ->
 			User = proplists:get_value(username,JsonList),
-			is_user(User);
+			case is_user(User) of
+				{ok,#proxy_userinfo{username=Uname}} ->
+					iolist_to_binary(mochijson2:encode({struct,[{status,<<"ok">>},{username,list_to_binary(Uname)}]}));
+				Err ->
+					Msg = lists:flatten(io_lib:format("is_user error: ~p",[Err])),
+					iolist_to_binary(mochijson2:encode({struct,[{status,<<"error">>},{message,list_to_binary(Msg)}]}))
+			end;
+		"delete_user" ->
+			User = proplists:get_value(username,JsonList),
+			delete_user(User),
+			iolist_to_binary(mochijson2:encode({struct,[{status,<<"ok">>}]}));
 		false ->
-			"No authcmd given."
+			iolist_to_binary(mochijson2:encode({struct,[{status,<<"error">>},{message,<<"No authcmd given.">>}]}));
+		Invalid ->
+			Msg = lists:flatten(io_lib:format("Invalid auth command: ~p",[Invalid])),
+			iolist_to_binary(mochijson2:encode({struct,[{status,<<"error">>},{message,list_to_binary(Msg)}]}))
+			
 	end.
 			
 
@@ -76,7 +98,7 @@ delete_user(User) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
-	surrogate_api_cmd:register("proxy_auth_cmd",#api_command{module=?MODULE,function=apicmd}),
+	surrogate_api_cmd:register(?MODULE,#api_command{module=?MODULE,function=apicmd}),
 	Mode = proxyconf:get(auth_mode,mnesia),
     {ok, #state{mode=Mode}}.
 
@@ -151,6 +173,9 @@ handle_call({add_user,User0,Pass},_From,State) when State#state.mode == mysql ->
 		Err ->
 			{reply,{error,Err},State}
 	end;
+handle_call({delete_user,User},_From,State) when State#state.mode == mysql ->
+	mysql:fetch(mysql,"DELETE FROM user_auth where name='"++User++"'"),
+	{reply,ok,State};
 handle_call({is_user,UserName},_From,State) when State#state.mode == mysql ->
 	User = string:to_lower(UserName),
 	case mysql:fetch(mysql,"select name from user_auth where name='"++User++"'") of

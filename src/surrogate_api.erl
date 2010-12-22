@@ -47,14 +47,18 @@ json(Sess,Env,Input) ->
 	try
 		case mochijson2:decode(Input) of
 			Parse ->
-				?DEBUG_MSG("Got command: ~p~n",[Parse]),
 				ReqInfo = method_auth_info(Parse,[]),
 				case proplists:get_value(command,ReqInfo,false) of
 					Command ->
 						CmdRet = 
 							case surrogate_api_cmd:exec(Command,Input) of
-								R when is_list(R) ->
+								R when is_list(R)->
 									R;
+								R when is_binary(R) ->
+									binary_to_list(R);
+								{error,_} = CmdErr ->
+									Msg = lists:flatten(io_lib:format("surrogate_api_cmd:exec() error: ~p",[CmdErr])),
+									iolist_to_binary(mochijson2:encode({struct,[{status,<<"error">>},{message,list_to_binary(Msg)}]}));
 								R ->
 									io_lib:format("~p",[R])
 							end,
@@ -81,8 +85,8 @@ method_auth_info({struct,[A|R]},Props) ->
 			method_auth_info({struct,R},[{command,Cmd}| Props]);
 		{<<"auth">>,AuthStruct} ->
 			method_auth_info({struct,R},parse_json_auth(AuthStruct,[]) ++ Props);
-		O ->
-			?DEBUG_MSG("Unknown result: ~p~n",[O]),
+		_O ->
+%% 			?DEBUG_MSG("Unknown result: ~p~n",[O]),
 			method_auth_info({struct,R}, Props)
 	end.
 	
@@ -93,8 +97,8 @@ parse_json_auth({struct,[A|R]},Props) ->
 			parse_json_auth({struct,R},[{username,binary_to_list(BUser)}|Props]);
 		{<<"password">>,BPass} ->
 			parse_json_auth({struct,R},[{password,binary_to_list(BPass)}|Props]);
-		O ->
-			?DEBUG_MSG("Unknown auth field: ~p~n",[O]),
+		_O ->
+%% 			?DEBUG_MSG("Unknown auth field: ~p~n",[O]),
 			parse_json_auth({struct,R},Props)
 	end.
 
@@ -109,6 +113,19 @@ json2proplist({struct,[A|R]},Props) ->
 		{BKey,{struct,_} = Value} ->
 			Key = list_to_atom(binary_to_list(BKey)),
 			Value2 = {Key,json2proplist(Value)},
+			json2proplist({struct,R},[Value2|Props]);
+		{BKey,Value} when is_list(Value) ->
+			Key = list_to_atom(binary_to_list(BKey)),
+			Value2 = {Key,lists:map(fun(X) -> 
+											case X of 
+												X when is_binary(X) -> binary_to_list(X);
+												{NBKey,{struct,_}=NVal} ->
+													NKey = list_to_atom(binary_to_list(NBKey)),
+													{NKey,json2proplist(NVal)};
+												{NBKey,NVal} when is_binary(NVal) ->
+													NKey = list_to_atom(binary_to_list(NBKey)),
+													{NKey,binary_to_list(NVal)}
+											end end, Value)},
 			json2proplist({struct,R},[Value2|Props]);
 		{_,_} ->
 			?DEBUG_MSG("Unexpected type in json2proplist: ~p~n",[A]),

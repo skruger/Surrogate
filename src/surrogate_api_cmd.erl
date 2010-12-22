@@ -31,6 +31,8 @@ start_link() ->
 %% Server functions
 %% ====================================================================
 
+register(Name,Cmd) when is_atom(Name) ->
+	?MODULE:register(atom_to_list(Name),Cmd);
 register(Name,Cmd) ->
 	gen_server:call(?MODULE,{register,Name,Cmd}).
 
