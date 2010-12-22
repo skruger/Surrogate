@@ -16,6 +16,88 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `listner`
+--
+
+DROP TABLE IF EXISTS `listner`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `listner` (
+  `id` bigint(20) NOT NULL auto_increment,
+  `listner_type` enum('ForwardTransparent','ForwardSocks45','ReverseBalanceHttp','ReverseBalanceHttps') NOT NULL,
+  `ip_address` varchar(15) default NULL,
+  `port` int(11) default NULL,
+  `config_id` bigint(20) default NULL,
+  PRIMARY KEY  (`id`),
+  KEY `config_id_idx` (`config_id`),
+  CONSTRAINT `listner_config_id_listner_config_id` FOREIGN KEY (`config_id`) REFERENCES `listner_config` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `listner`
+--
+
+LOCK TABLES `listner` WRITE;
+/*!40000 ALTER TABLE `listner` DISABLE KEYS */;
+/*!40000 ALTER TABLE `listner` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `listner_config`
+--
+
+DROP TABLE IF EXISTS `listner_config`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `listner_config` (
+  `id` bigint(20) NOT NULL auto_increment,
+  `enable_gzip` tinyint(1) default NULL,
+  `filter_headers` text,
+  `fwd_proxy_auth` enum('none','mneisa','mysql') NOT NULL default 'none',
+  `lb_pool` text,
+  `lb_proxy_host` text,
+  `lb_backend_port` int(11) default NULL,
+  PRIMARY KEY  (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `listner_config`
+--
+
+LOCK TABLES `listner_config` WRITE;
+/*!40000 ALTER TABLE `listner_config` DISABLE KEYS */;
+/*!40000 ALTER TABLE `listner_config` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `listner_config_stream_filters`
+--
+
+DROP TABLE IF EXISTS `listner_config_stream_filters`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `listner_config_stream_filters` (
+  `listner_config_id` bigint(20) NOT NULL default '0',
+  `stream_filter_id` bigint(20) NOT NULL default '0',
+  PRIMARY KEY  (`listner_config_id`,`stream_filter_id`),
+  KEY `listner_config_stream_filters_stream_filter_id_stream_filter_id` (`stream_filter_id`),
+  CONSTRAINT `listner_config_stream_filters_stream_filter_id_stream_filter_id` FOREIGN KEY (`stream_filter_id`) REFERENCES `stream_filter` (`id`),
+  CONSTRAINT `llli` FOREIGN KEY (`listner_config_id`) REFERENCES `listner_config` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `listner_config_stream_filters`
+--
+
+LOCK TABLES `listner_config_stream_filters` WRITE;
+/*!40000 ALTER TABLE `listner_config_stream_filters` DISABLE KEYS */;
+/*!40000 ALTER TABLE `listner_config_stream_filters` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `sf_guard_forgot_password`
 --
 
@@ -32,7 +114,7 @@ CREATE TABLE `sf_guard_forgot_password` (
   PRIMARY KEY  (`id`),
   KEY `user_id_idx` (`user_id`),
   CONSTRAINT `sf_guard_forgot_password_user_id_sf_guard_user_id` FOREIGN KEY (`user_id`) REFERENCES `sf_guard_user` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -59,7 +141,7 @@ CREATE TABLE `sf_guard_group` (
   `updated_at` datetime NOT NULL,
   PRIMARY KEY  (`id`),
   UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -68,7 +150,7 @@ CREATE TABLE `sf_guard_group` (
 
 LOCK TABLES `sf_guard_group` WRITE;
 /*!40000 ALTER TABLE `sf_guard_group` DISABLE KEYS */;
-INSERT INTO `sf_guard_group` VALUES (1,'admin','Administrator group','2010-12-19 12:57:38','2010-12-19 12:57:38');
+INSERT INTO `sf_guard_group` VALUES (1,'admin','Administrator group','2010-12-22 00:34:27','2010-12-22 00:34:27');
 /*!40000 ALTER TABLE `sf_guard_group` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -88,7 +170,7 @@ CREATE TABLE `sf_guard_group_permission` (
   KEY `sf_guard_group_permission_permission_id_sf_guard_permission_id` (`permission_id`),
   CONSTRAINT `sf_guard_group_permission_group_id_sf_guard_group_id` FOREIGN KEY (`group_id`) REFERENCES `sf_guard_group` (`id`) ON DELETE CASCADE,
   CONSTRAINT `sf_guard_group_permission_permission_id_sf_guard_permission_id` FOREIGN KEY (`permission_id`) REFERENCES `sf_guard_permission` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -97,7 +179,7 @@ CREATE TABLE `sf_guard_group_permission` (
 
 LOCK TABLES `sf_guard_group_permission` WRITE;
 /*!40000 ALTER TABLE `sf_guard_group_permission` DISABLE KEYS */;
-INSERT INTO `sf_guard_group_permission` VALUES (1,1,'2010-12-19 12:57:38','2010-12-19 12:57:38');
+INSERT INTO `sf_guard_group_permission` VALUES (1,1,'2010-12-22 00:34:27','2010-12-22 00:34:27');
 /*!40000 ALTER TABLE `sf_guard_group_permission` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -116,7 +198,7 @@ CREATE TABLE `sf_guard_permission` (
   `updated_at` datetime NOT NULL,
   PRIMARY KEY  (`id`),
   UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -125,7 +207,7 @@ CREATE TABLE `sf_guard_permission` (
 
 LOCK TABLES `sf_guard_permission` WRITE;
 /*!40000 ALTER TABLE `sf_guard_permission` DISABLE KEYS */;
-INSERT INTO `sf_guard_permission` VALUES (1,'admin','Administrator permission','2010-12-19 12:57:38','2010-12-19 12:57:38');
+INSERT INTO `sf_guard_permission` VALUES (1,'admin','Administrator permission','2010-12-22 00:34:27','2010-12-22 00:34:27');
 /*!40000 ALTER TABLE `sf_guard_permission` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -146,7 +228,7 @@ CREATE TABLE `sf_guard_remember_key` (
   PRIMARY KEY  (`id`),
   KEY `user_id_idx` (`user_id`),
   CONSTRAINT `sf_guard_remember_key_user_id_sf_guard_user_id` FOREIGN KEY (`user_id`) REFERENCES `sf_guard_user` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -183,7 +265,7 @@ CREATE TABLE `sf_guard_user` (
   UNIQUE KEY `email_address` (`email_address`),
   UNIQUE KEY `username` (`username`),
   KEY `is_active_idx_idx` (`is_active`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -192,7 +274,7 @@ CREATE TABLE `sf_guard_user` (
 
 LOCK TABLES `sf_guard_user` WRITE;
 /*!40000 ALTER TABLE `sf_guard_user` DISABLE KEYS */;
-INSERT INTO `sf_guard_user` VALUES (1,'John','Doe','john.doe@gmail.com','admin','sha1','df295da6b25d7163c37bad6f50375f72','c60276b0bba4b46dd0dd402834d5d71db8a7b673',1,1,'2010-12-19 12:59:31','2010-12-19 12:57:38','2010-12-19 12:59:31');
+INSERT INTO `sf_guard_user` VALUES (1,'John','Doe','john.doe@gmail.com','admin','sha1','943c76f93976792fdba1cccc0402fc1f','32807f4bcf3e46f9d059175b3fac224ee6ee4ca7',1,1,'2010-12-22 00:43:44','2010-12-22 00:34:27','2010-12-22 00:43:44');
 /*!40000 ALTER TABLE `sf_guard_user` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -212,7 +294,7 @@ CREATE TABLE `sf_guard_user_group` (
   KEY `sf_guard_user_group_group_id_sf_guard_group_id` (`group_id`),
   CONSTRAINT `sf_guard_user_group_group_id_sf_guard_group_id` FOREIGN KEY (`group_id`) REFERENCES `sf_guard_group` (`id`) ON DELETE CASCADE,
   CONSTRAINT `sf_guard_user_group_user_id_sf_guard_user_id` FOREIGN KEY (`user_id`) REFERENCES `sf_guard_user` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -221,7 +303,7 @@ CREATE TABLE `sf_guard_user_group` (
 
 LOCK TABLES `sf_guard_user_group` WRITE;
 /*!40000 ALTER TABLE `sf_guard_user_group` DISABLE KEYS */;
-INSERT INTO `sf_guard_user_group` VALUES (1,1,'2010-12-19 12:57:38','2010-12-19 12:57:38');
+INSERT INTO `sf_guard_user_group` VALUES (1,1,'2010-12-22 00:34:27','2010-12-22 00:34:27');
 /*!40000 ALTER TABLE `sf_guard_user_group` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -241,7 +323,7 @@ CREATE TABLE `sf_guard_user_permission` (
   KEY `sf_guard_user_permission_permission_id_sf_guard_permission_id` (`permission_id`),
   CONSTRAINT `sf_guard_user_permission_permission_id_sf_guard_permission_id` FOREIGN KEY (`permission_id`) REFERENCES `sf_guard_permission` (`id`) ON DELETE CASCADE,
   CONSTRAINT `sf_guard_user_permission_user_id_sf_guard_user_id` FOREIGN KEY (`user_id`) REFERENCES `sf_guard_user` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -251,6 +333,106 @@ CREATE TABLE `sf_guard_user_permission` (
 LOCK TABLES `sf_guard_user_permission` WRITE;
 /*!40000 ALTER TABLE `sf_guard_user_permission` DISABLE KEYS */;
 /*!40000 ALTER TABLE `sf_guard_user_permission` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `stream_filter`
+--
+
+DROP TABLE IF EXISTS `stream_filter`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `stream_filter` (
+  `id` bigint(20) NOT NULL auto_increment,
+  `name` varchar(60) default NULL,
+  `module_value` varchar(60) default NULL,
+  `has_forward_mode` tinyint(1) default NULL,
+  `has_reverse_mode` tinyint(1) default NULL,
+  PRIMARY KEY  (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `stream_filter`
+--
+
+LOCK TABLES `stream_filter` WRITE;
+/*!40000 ALTER TABLE `stream_filter` DISABLE KEYS */;
+INSERT INTO `stream_filter` VALUES (1,'filter_force_chunk',NULL,1,1),(2,'filter_headers',NULL,1,1),(3,'filter_icap',NULL,1,0),(4,'filter_auth_basic',NULL,1,0);
+/*!40000 ALTER TABLE `stream_filter` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `virtual_service`
+--
+
+DROP TABLE IF EXISTS `virtual_service`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `virtual_service` (
+  `id` bigint(20) NOT NULL auto_increment,
+  `name` varchar(60) default NULL,
+  `enabled_status` tinyint(1) default NULL,
+  PRIMARY KEY  (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `virtual_service`
+--
+
+LOCK TABLES `virtual_service` WRITE;
+/*!40000 ALTER TABLE `virtual_service` DISABLE KEYS */;
+/*!40000 ALTER TABLE `virtual_service` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `virtual_service_listner`
+--
+
+DROP TABLE IF EXISTS `virtual_service_listner`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `virtual_service_listner` (
+  `virtual_service_id` bigint(20) NOT NULL default '0',
+  `listner_id` bigint(20) NOT NULL default '0',
+  PRIMARY KEY  (`virtual_service_id`,`listner_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `virtual_service_listner`
+--
+
+LOCK TABLES `virtual_service_listner` WRITE;
+/*!40000 ALTER TABLE `virtual_service_listner` DISABLE KEYS */;
+/*!40000 ALTER TABLE `virtual_service_listner` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `virtual_service_listners`
+--
+
+DROP TABLE IF EXISTS `virtual_service_listners`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `virtual_service_listners` (
+  `virtual_service_id` bigint(20) NOT NULL default '0',
+  `listner_id` bigint(20) NOT NULL default '0',
+  PRIMARY KEY  (`virtual_service_id`,`listner_id`),
+  KEY `virtual_service_listners_listner_id_listner_id` (`listner_id`),
+  CONSTRAINT `virtual_service_listners_listner_id_listner_id` FOREIGN KEY (`listner_id`) REFERENCES `listner` (`id`),
+  CONSTRAINT `virtual_service_listners_virtual_service_id_virtual_service_id` FOREIGN KEY (`virtual_service_id`) REFERENCES `virtual_service` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `virtual_service_listners`
+--
+
+LOCK TABLES `virtual_service_listners` WRITE;
+/*!40000 ALTER TABLE `virtual_service_listners` DISABLE KEYS */;
+/*!40000 ALTER TABLE `virtual_service_listners` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -262,4 +444,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2010-12-19 13:00:36
+-- Dump completed on 2010-12-22  0:51:43

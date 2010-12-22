@@ -1,14 +1,24 @@
 <?php use_helper('I18N') ?>
 
-<form action="<?php echo url_for('@sf_guard_signin') ?>" method="post">
+<form id="loginForm" action="<?php echo url_for('@sf_guard_signin') ?>" method="post">
+<div class="login_form">
+  <b class="sgrnd">
+  <b class="sgrnd1"><b></b></b>
+  <b class="sgrnd2"><b></b></b>
+  <b class="sgrnd3"></b>
+  <b class="sgrnd4"></b>
+  <b class="sgrnd5"></b></b>
+
+  <div class="sgrndfg">
+
   <table>
-    <tbody>
+    <tbody>    
       <?php echo $form ?>
     </tbody>
     <tfoot>
       <tr>
         <td colspan="2">
-          <input type="submit" value="<?php echo __('Signin', null, 'sf_guard') ?>" />
+          <input id="login_button" type="submit" value="<?php echo __('Signin', null, 'sf_guard') ?>" />
           
           <?php $routes = $sf_context->getRouting()->getRoutes() ?>
           <?php if (isset($routes['sf_guard_forgot_password'])): ?>
@@ -22,4 +32,13 @@
       </tr>
     </tfoot>
   </table>
+  </div>
+
+  <b class="sgrnd">
+  <b class="sgrnd5"></b>
+  <b class="sgrnd4"></b>
+  <b class="sgrnd3"></b>
+  <b class="sgrnd2"><b></b></b>
+  <b class="sgrnd1"><b></b></b></b>
+</div>  
 </form>

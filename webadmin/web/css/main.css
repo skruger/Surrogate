@@ -1,18 +1,7 @@
+
 body {
-        background: #123;
-        border-top: 5px solid #000;
-        color: #333;
         font-size: 11px;
         padding: 20px 0 40px;
-}
-
-a {
-        color: #fff;
-        text-decoration: none;
-}
-
-a:hover {
-        text-decoration: underline;
 }
 
 h1 {
@@ -32,3 +21,49 @@ p {
         padding: 10px 0;
         text-align: center;
 }
+
+#loginForm label { position: absolute; text-align:right; width:130px; }
+#loginForm input, textarea { margin-left: 140px; }
+#loginForm label.check, label.radio { position:relative; text-align:left; }
+
+.sgrnd{display:block}
+.sgrnd *{
+  display:block;
+  height:1px;
+  overflow:hidden;
+  font-size:.01em;
+  background:#4E79B9}
+.sgrnd1{
+  margin-left:3px;
+  margin-right:3px;
+  padding-left:1px;
+  padding-right:1px;
+  border-left:1px solid #787d99;
+  border-right:1px solid #787d99;
+  background:#607bab}
+.sgrnd2{
+  margin-left:1px;
+  margin-right:1px;
+  padding-right:1px;
+  padding-left:1px;
+  border-left:1px solid #918086;
+  border-right:1px solid #918086;
+  background:#5c7aae}
+.sgrnd3{
+  margin-left:1px;
+  margin-right:1px;
+  border-left:1px solid #5c7aae;
+  border-right:1px solid #5c7aae;}
+.sgrnd4{
+  border-left:1px solid #787d99;
+  border-right:1px solid #787d99}
+.sgrnd5{
+  border-left:1px solid #607bab;
+  border-right:1px solid #607bab}
+.sgrndfg{
+  background:#4E79B9}
+.login_form{
+  width:450px;
+  margin-left: auto ;
+  margin-right: auto ;  
+}  

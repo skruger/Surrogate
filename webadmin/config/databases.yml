@@ -5,3 +5,7 @@ all:
       dsn: 'mysql:host=localhost;dbname=surrogate_webadmin'
       username: root
       password: null
+      attributes:
+        default_table_collate: utf8_general_ci
+        default_table_charset: utf8
+      

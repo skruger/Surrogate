@@ -15,3 +15,20 @@
 #     password: changeme
 #     name:     Kris Wallsmith
 #     email:    kris.wallsmith@symfony-project.com
+StreamFilter:
+  filter_force_chunk:
+    name: filter_force_chunk
+    has_forward_mode: true
+    has_reverse_mode: true
+  filter_headers:
+    name: filter_headers
+    has_forward_mode: true
+    has_reverse_mode: true
+  filter_icap:
+    name: filter_icap
+    has_forward_mode: true
+    has_reverse_mode: false
+  filter_auth_basic:
+    name: filter_auth_basic
+    has_forward_mode: true 
+    has_reverse_mode: false

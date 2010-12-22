@@ -1,0 +1,76 @@
+VirtualService:
+  columns:
+    name: string(60)
+    enabled_status: boolean
+        
+VirtualServiceListners:
+  columns:
+    virtual_service_id:
+      type: bigint
+      primary: true
+    listner_id:
+      type: bigint
+      primary: true
+  relations:
+    VirtualService:
+      local: virtual_service_id
+      foreign: id
+      type: one
+    Listner:
+      local: listner_id
+      foreign: id
+      type: one
+
+Listner:
+  columns:
+    listner_type: 
+      type: enum
+      values: ['ForwardTransparent', 'ForwardSocks45', 'ReverseBalanceHttp', 'ReverseBalanceHttps']
+      notnull: true
+    ip_address: string(15)
+    port: int
+    config_id: bigint
+  relations:
+    ListnerConfig:
+      local: config_id
+      foreign: id
+      type: one
+      
+ListnerConfig:
+  columns:
+    enable_gzip: boolean
+    filter_headers: string
+    fwd_proxy_auth: 
+      type: enum
+      values: ['none','mneisa','mysql']
+      notnull: true
+      default: none
+    lb_pool: string
+    lb_proxy_host: string
+    lb_backend_port: int
+    
+ListnerConfigStreamFilters:
+  columns:
+    listner_config_id:
+      type: bigint
+      primary: true
+    stream_filter_id:
+      type: bigint
+      primary: true
+  relations:
+    ListnerConfig:
+      local: listner_config_id
+      foreign: id
+      type: one
+    StreamFilter:
+      local: stream_filter_id
+      foreign: id
+      type: one
+          
+StreamFilter:
+  columns:
+    name: string(60)
+    module_value: string(60)
+    has_forward_mode: boolean
+    has_reverse_mode: boolean
+    

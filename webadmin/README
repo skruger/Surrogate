@@ -16,6 +16,10 @@ or you can do it all with symfony
 php ./symfony cc
 php ./symfony project:permissions
 php ./symfony doctrine:build --all
+php ./symfony doctrine:data-load
+
+data/fixtures/fixtures.yml contains the default loaded StreamFilter items
+data/fixtures/sfGuard.yml contains the default admin user with user/pass admin/admin 
 
 Run symfony script by it's self to see all the options, the file surrogate_webadmin is just a dump of mysql
 

@@ -1,3 +1,6 @@
+<link rel="stylesheet" type="text/css" media="screen" href="/css/reset.css" />
+<link rel="stylesheet" type="text/css" media="screen" href="/css/text.css" />
+<link rel="stylesheet" type="text/css" media="screen" href="/css/960.css" />
 <style type="text/css">
 .container_12 {
         background: #fff url(/images/12_col.gif) repeat-y;

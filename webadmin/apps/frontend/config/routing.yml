@@ -1,3 +1,39 @@
+stream_filter:
+  class: sfDoctrineRouteCollection
+  options:
+    model:                StreamFilter
+    module:               stream_filter
+    prefix_path:          /stream_filter
+    column:               id
+    with_wildcard_routes: true
+
+listner_config:
+  class: sfDoctrineRouteCollection
+  options:
+    model:                ListnerConfig
+    module:               listner_config
+    prefix_path:          /listner_config
+    column:               id
+    with_wildcard_routes: true
+
+listner:
+  class: sfDoctrineRouteCollection
+  options:
+    model:                Listner
+    module:               listner
+    prefix_path:          /listner
+    column:               id
+    with_wildcard_routes: true
+
+virtual_service:
+  class: sfDoctrineRouteCollection
+  options:
+    model:                VirtualService
+    module:               virtual_service
+    prefix_path:          /virtual_service
+    column:               id
+    with_wildcard_routes: true
+
 # You can find more information about this file on the symfony website:
 # http://www.symfony-project.org/reference/1_4/en/10-Routing
 
