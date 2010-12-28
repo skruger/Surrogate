@@ -58,6 +58,8 @@ filter_url(Url,User) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+	mnesia:create_table(filter_host_list, [{attributes, record_info(fields, filter_host_list)}]),
+    mnesia:create_table(filter_url_list, [{attributes, record_info(fields, filter_url_list)}]),
 	Props = proxyconf:get(filter_host,[]),
 	gen_server:cast(self(),load_deny_hosts),
 	{ok, #state{config=Props,deny_hosts=[]}}.

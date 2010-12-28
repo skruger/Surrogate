@@ -20,7 +20,10 @@
 
 -record(proxy_userinfo,{username,password,extra_info}).
 
--record(api_command,{module,function}).
+-record(api_command,{module,function,description="",format=""}).
+
+-record(gen_balancer_state,{balancer_mod,pool,active_pool,local_state}).
+-record(client_info,{remote_addr,request_header}).
 
 -define(CRITICAL(X,Y), surrogate_log:append(0,?MODULE,lists:flatten(io_lib:format(X,Y)))).
 -define(ERROR_MSG(X,Y), surrogate_log:append(1,?MODULE,lists:flatten(io_lib:format(X,Y)))).

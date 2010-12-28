@@ -98,8 +98,17 @@ delete_user(User) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
-	surrogate_api_cmd:register(?MODULE,#api_command{module=?MODULE,function=apicmd}),
+	surrogate_api_cmd:register(?MODULE,#api_command{module=?MODULE,function=apicmd,
+													description="Add/Remove/List proxy_auth users.",
+													format="list_users|add_user <username> <password>|is_user <username>|delete_user <username>"}),
 	Mode = proxyconf:get(auth_mode,mnesia),
+	case Mode of
+		mnesia ->
+			mnesia:create_table(proxy_userinfo, [{attributes, record_info(fields, proxy_userinfo)}]),
+			mnesia:change_table_copy_type(proxy_userinfo,node(),disc_copies);
+		_ ->
+			ok
+	end,
     {ok, #state{mode=Mode}}.
 
 %% --------------------------------------------------------------------

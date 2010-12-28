@@ -165,7 +165,7 @@ http_balance(get_headers,State) ->
 				undefined ->
 					{error,enoaddr};
 				Pool ->
-					balancer:next(Pool)
+					gen_balancer:next(Pool,#client_info{})
 			end;
 		R ->
 			R

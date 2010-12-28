@@ -21,10 +21,12 @@ curl_setopt($curl,CURLOPT_POST,TRUE);
 curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
 //curl_setopt($curl,CURLOPT_POSTFIELDS,$req->asXML());
 
-$reqAuth = "\"command\":\"proxy_auth\",\"auth\":{\"username\":\"user\",\"password\":\"mypasswd\"},";
+//$reqAuth = "\"command\":\"proxy_auth\",\"auth\":{\"username\":\"user\",\"password\":\"mypasswd\"},";
 //$reqStr = "{ $reqAuth \"authcmd\":\"delete_user\",\"username\":\"test\"}";
 //$reqStr = "{ $reqAuth \"authcmd\":\"add_user\",\"username\":\"test\",\"password\":\"testing567\"}";
-$reqStr = "{ $reqAuth \"authcmd\":\"is_user\",\"username\":\"test\"}";
+//$reqStr = "{ $reqAuth \"authcmd\":\"is_user\",\"username\":\"test\"}";
+
+$reqStr = "{\"execmodule\":\"list_commands\",\"auth\":{\"username\":\"user\",\"password\":\"mypasswd\"}}";
 
 curl_setopt($curl,CURLOPT_POSTFIELDS,$reqStr);
 

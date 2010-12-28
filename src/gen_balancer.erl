@@ -2,60 +2,50 @@
 %%% Author  : skruger
 %%% Description :
 %%%
-%%% Created : Dec 16, 2010
+%%% Created : Dec 25, 2010
 %%% -------------------------------------------------------------------
--module(surrogate_api_cmd).
+-module(gen_balancer).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
 -include("surrogate.hrl").
+
+
+
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/0,register/2,exec/2,list_commands/1]).
+-export([start_link/3,start/2, next/2,behaviour_info/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {commands}).
+%% -record(state, {balancer_mod,balancer_state}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
+behaviour_info(callbacks) ->
+	[{init,1}, {next,2}];
+behaviour_info(_) ->
+	undefined.
 
-start_link() ->
-	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+start_link(Name,Mod,Args) ->
+	?DEBUG_MSG("~p ~p ~p~n",[Name,?MODULE,[Mod,Args]]),
+	gen_server:start_link(Name,?MODULE,[Mod,Args],[]).
+
+start(Mod,Args) ->
+	gen_server:start(Mod,[Mod,Args],[]).
+
+next(Pool,ClientInfo) ->
+	Ref = proxylib:get_pool_process(Pool),
+	gen_server:call(Ref,{get_next,ClientInfo}).
+
 
 %% ====================================================================
 %% Server functions
 %% ====================================================================
-
-register(Name,Cmd) when is_atom(Name) ->
-	?MODULE:register(atom_to_list(Name),Cmd);
-register(Name,Cmd) ->
-	gen_server:call(?MODULE,{register,Name,Cmd}).
-
-exec(Name,Args) ->
-	case gen_server:call(?MODULE,{get_command,Name}) of
-		{ok,#api_command{module=Mod,function=Fun}} ->
-%% 			?DEBUG_MSG("apply(~p,~p,~p)~n",[Mod,Fun,Args]),
-			erlang:apply(Mod,Fun,[Args]);
-		Err ->
-			Err
-	end.
-
-list_commands(Args) ->
-	case gen_server:call(?MODULE,{list_commands,Args}) of
-		{ok,CmdList} ->
-			CList = lists:map(fun({N,X}) -> {struct,[{name,list_to_binary(N)},
-													 {description,list_to_binary(X#api_command.description)},
-													 {format,list_to_binary(X#api_command.format)}]} end,CmdList),
-			iolist_to_binary(mochijson2:encode({struct,[{status,<<"ok">>},{commands,CList}]}));
-		Err ->
-			Msg = lists:flatten(io_lib:format("list_commands error: ~p",[Err])),
-			iolist_to_binary(mochijson2:encode({struct,[{status,<<"error">>},{message,list_to_binary(Msg)}]}))
-	end.
 
 %% --------------------------------------------------------------------
 %% Function: init/1
@@ -65,13 +55,36 @@ list_commands(Args) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([]) ->
-	spawn(fun() -> 
-				  ?MODULE:register(list_commands,#api_command{module=?MODULE,
-															  function=list_commands,
-															  description="List commands registered with JSON API."}) 
-		  end),
-    {ok, #state{commands=dict:new()}}.
+init([Mod,Args]) ->
+	?DEBUG_MSG("Starting: ~p ~p~n",[Mod,Args]),
+	State = init_state(Args),
+	case apply(Mod,init,[Args]) of
+		{ok,LState} ->
+			{ok,State#gen_balancer_state{balancer_mod=Mod,local_state=LState}};
+		{ok,LState,Timeout} ->
+			{ok,State#gen_balancer_state{balancer_mod=Mod,local_state=LState},Timeout};
+		Err ->
+			Err
+	end.
+    
+init_state(Args) ->
+	init_state(Args,#gen_balancer_state{pool=[],active_pool=[]}).
+
+init_state([],State) ->
+	State;
+init_state([A|R],State) ->
+	case A of
+		{host,Host} ->
+			Pool = [Host|(State#gen_balancer_state.pool)],
+			?DEBUG_MSG("Host added: ~p~n",[Host]),
+			init_state(R,State#gen_balancer_state{pool=Pool,active_pool=Pool});
+%% 		{hosts,HList} ->
+%% 			init_state(R,State#gen_balancer_state{pool=HList,active_pool=HList});
+		Unk ->
+			?WARN_MSG("Invalid balancer option: ~p~n",[Unk]),
+			init_state(R,State)
+	end.
+
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -83,23 +96,13 @@ init([]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call({register,Name,Cmd},_From,State) ->
-	?DEBUG_MSG("Register ~p ~p~n",[Name,Cmd]),
-	{reply,ok,State#state{commands=dict:store(Name, Cmd, State#state.commands)}};
-handle_call({get_command,Name},_From,State) ->
-	case dict:find(Name,State#state.commands) of
-		{ok,Cmd} ->
-			?DEBUG_MSG("Returning cmd=~p~n",[Cmd]),
-			{reply,{ok,Cmd},State};
-		Err ->
-			?WARN_MSG("Unknown api command: ~p~n~p~n",[Name,Err]),
-			{reply,{error,invalid},State}
-	end;
-handle_call({list_commands,_Args},_From,State) ->
-	{reply,{ok,dict:to_list(State#state.commands)},State};
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call({get_next,ClientInfo}, _From, State) ->
+	apply(State#gen_balancer_state.balancer_mod,next,[ClientInfo,State]);
+%% 	Reply = apply(State#gen_balancer_state.balancer_mod,next,[ClientInfo,State]),
+%%     {reply, Reply, State};
+handle_call(Err,_From,State) ->
+	?ERROR_MSG("Got unknown call: ~p~n",[Err]),
+	{reply,ok,State}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_cast/2

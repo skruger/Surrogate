@@ -60,7 +60,7 @@ run() ->
 	application:start(inets),
 	mnesia:create_schema([node()]),
 	application:start(mnesia),
-    create_tables:init_tables(),
+%%     create_tables:init_tables(),
 	application:start(crypto),
 	application:start(public_key),
 	application:start(ssl),

@@ -79,7 +79,7 @@ json(Sess,Env,Input) ->
 method_auth_info({struct,[]},Props) -> Props;
 method_auth_info({struct,[A|R]},Props) ->
 	case A of
-		{<<"command">>,BCmd} ->
+		{<<"execmodule">>,BCmd} ->
 			Cmd = binary_to_list(BCmd),
 			?DEBUG_MSG("Got command: ~p~n",[Cmd]),
 			method_auth_info({struct,R},[{command,Cmd}| Props]);

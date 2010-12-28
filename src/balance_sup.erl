@@ -11,10 +11,12 @@
 %% Include files
 %% --------------------------------------------------------------------
 
+-include("surrogate.hrl").
+
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/0,get_spec/0]).
+-export([start_link/0,get_spec/0,pool_children/2]).
 
 %% --------------------------------------------------------------------
 %% Internal exports
@@ -70,17 +72,27 @@ init([]) ->
 
 pool_children([],C) ->
 	C;
-pool_children([{Pool,PoolProps}|R],C) ->
+pool_children([{Pool,PoolMod,PoolProps}|R],C) ->
 	CName = proxylib:get_pool_process(Pool),
-	Mode = proplists:get_value(mode,PoolProps,roundrobin),
-	case proplists:get_value(hosts,PoolProps,[]) of
-		[] ->
-			pool_children(R,C);
-		_Hosts ->
-			Child = {CName,{balancer,start_pool,[Pool,Mode]},
-					 permanent,2000,worker,[]},
-			pool_children(R,[Child|C])
-	end.
+	Child = {CName,{gen_balancer,start_link,[CName,PoolMod,PoolProps]},
+			 permanent,2000,worker,[]},
+	?DEBUG_MSG("Add child: ~p~n",[Child]),
+	pool_children(R,[Child|C]).
+
+%% 
+%% pool_children([],C) ->
+%% 	C;
+%% pool_children([{Pool,PoolProps}|R],C) ->
+%% 	CName = proxylib:get_pool_process(Pool),
+%% 	Mode = proplists:get_value(mode,PoolProps,roundrobin),
+%% 	case proplists:get_value(hosts,PoolProps,[]) of
+%% 		[] ->
+%% 			pool_children(R,C);
+%% 		_Hosts ->
+%% 			Child = {CName,{balancer,start_pool,[Pool,Mode]},
+%% 					 permanent,2000,worker,[]},
+%% 			pool_children(R,[Child|C])
+%% 	end.
 
 %% ====================================================================
 %% Internal functions
