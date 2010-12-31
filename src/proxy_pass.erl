@@ -35,6 +35,8 @@
 start(Args) ->
 	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
 
+start(Node,Args) when Node == self() ->
+	start(Args);
 start(Node,Args) ->
 	spawn(Node,?MODULE,start_remote,[Args]),
 	receive
@@ -43,9 +45,9 @@ start(Node,Args) ->
 	end.
 
 start_remote(Parent,Args) ->
-	Ret = ?MODULE:start(Args),
+	Ret = apply(?MODULE,start,[Args]),
 	Parent ! Ret,
-	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
+	?DEBUG_MSG("~p started on node ~p for parent ~p.~n",[?MODULE,node(),Parent]),
 	ok.
 					
 
