@@ -35,19 +35,24 @@
 start(Args) ->
 	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
 
-start(Node,Args) when Node == self() ->
-	start(Args);
 start(Node,Args) ->
-	spawn(Node,?MODULE,start_remote,[Args]),
-	receive
-		Ret -> Ret
-	after 5000 -> {error,timeout}
+	case net_adm:ping(Node) of
+		pong ->
+			SR = spawn(Node,?MODULE,start_remote,[self(),Args]),
+			?DEBUG_MSG("Starting remote ~p on ~p: ~p.~n",[?MODULE,Node,SR]),
+			receive
+				Ret -> Ret
+			after 5000 -> {error,timeout}
+			end;
+		pang ->
+			?CRITICAL("Could not find node: ~p.  Starting locally.~n",[Node]),
+			start(Args)
 	end.
 
 start_remote(Parent,Args) ->
-	Ret = apply(?MODULE,start,[Args]),
-	Parent ! Ret,
-	?DEBUG_MSG("~p started on node ~p for parent ~p.~n",[?MODULE,node(),Parent]),
+	Ret = ?MODULE:start(Args),
+	erlang:send(Parent,Ret),
+	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
 	ok.
 					
 
