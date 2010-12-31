@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1]).
+-export([start/1,start/2,start_remote/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -34,6 +34,20 @@
 %% ====================================================================
 start(Args) ->
 	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
+
+start(Node,Args) ->
+	spawn(Node,?MODULE,start_remote,[Args]),
+	receive
+		Ret -> Ret
+	after 5000 -> {error,timeout}
+	end.
+
+start_remote(Parent,Args) ->
+	Ret = ?MODULE:start(Args),
+	Parent ! Ret,
+	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
+	ok.
+					
 
 %% ====================================================================
 %% Server functions
