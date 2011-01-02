@@ -58,7 +58,6 @@ run() ->
 	end,
 	application:start(sasl),
 	application:start(inets),
-	mnesia:create_schema([node()]),
 	application:start(mnesia),
 %%     create_tables:init_tables(),
 	application:start(crypto),

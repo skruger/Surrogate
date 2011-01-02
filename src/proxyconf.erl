@@ -84,6 +84,13 @@ get_proxyconfig() ->
 %% --------------------------------------------------------------------
 init(State) ->
 	?INFO_MSG("Starting ~p.",[?MODULE]),
+	case proplists:get_value(mode,State#state.config_terms,worker) of
+		master ->
+			mnesia:create_schema([node()]);
+		_ ->
+			ok
+	end,
+	
 	case proplists:get_value(mysql_conn,State#state.config_terms,false) of
 		{Host, Port, User, Password, Database} = MysqlConf ->
 			F = fun() ->
