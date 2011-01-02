@@ -157,15 +157,20 @@ disc_nodes() ->
 
 add_discless_node(Node) ->
 	NodeList = [Node|mnesia:system_info(extra_db_nodes)],
+	?INFO_MSG("Adding extra_db_node ~p (NodeList: ~p)~n",[Node,NodeList]),
 	proxylib:rapply(Node,mnesia,stop,[]),
 	proxylib:rapply(Node,mnesia,delete_schema,[[Node]]),
 	proxylib:rapply(Node,mnesia,start,[]),
-	mnesia:change_config(extra_db_nodes,[NodeList]).
+	mnesia:change_config(extra_db_nodes,NodeList).
 
 remove_discless_node(Node) ->
+	NodeList = lists:delete(Node,mnesia:system_info(extra_db_nodes)),
 	proxylib:rapply(Node,mnesia,stop,[]),
 	?INFO_MSG("Removing discless node ~p~n",[Node]),
-	mnesia:del_table_copy(schema,Node).
+ 	mnesia:del_table_copy(schema,Node),
+	mnesia:change_config(extra_db_nodes,NodeList),
+	mnesia:delete_schema([Node]).
+	
 
 
 delete_all() ->
