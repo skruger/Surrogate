@@ -4,7 +4,7 @@
 %%%
 %%% Created : Nov 17, 2010
 %%% -------------------------------------------------------------------
--module(balancer).
+-module(balance_worker).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
@@ -13,17 +13,24 @@
 -include("surrogate.hrl").
 %% --------------------------------------------------------------------
 %% External exports
--export([start_pool/2,next/1,stop/1,state/1]).
+-export([mnesia_init/0,start_pool/2,next/1,stop/1,state/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {mode,hostlist,host_count,lasthost}).
 
+-record(worker_pools,{name}).
+
 %% ====================================================================
 %% External functions
 %% ====================================================================
 
+mnesia_init() ->
+	mnesia:create_table(worker_pools,[{attributes,record_info(fields,worker_pools)}]),
+	mnesia:change_table_copy_type(worker_pools,node(),disc_copies).
+
+	
 start_pool(Poolname,Mode) ->
 	Pools = proxyconf:get(balance_pools,[]),
 	PoolProps = proplists:get_value(Poolname,Pools),
@@ -31,17 +38,17 @@ start_pool(Poolname,Mode) ->
 		[] ->
 			{error,nomembers};
 		PoolMembers ->
-			Pname = proxylib:get_pool_process(Poolname),
+			Pname = poolprocessname(Poolname),
 			gen_server:start_link(Pname,?MODULE,[PoolMembers,Mode],[])
 	end.
 	
 next(Pool) ->
-	gen_server:call(proxylib:get_pool_process(Pool),next).
+	gen_server:call(poolprocessname(Pool),next).
 stop(Pool) ->
-	gen_server:call(proxylib:get_pool_process(Pool),stop).
+	gen_server:call(poolprocessname(Pool),stop).
 
 state(Pool) ->
-	gen_server:call(proxylib:get_pool_process(Pool),state).
+	gen_server:call(poolprocessname(Pool),state).
 
 
 %% ====================================================================
@@ -124,3 +131,5 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
+poolprocessname(PoolName) ->
+	{global,list_to_atom("worker_pool_"++atom_to_list(PoolName))}.
