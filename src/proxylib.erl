@@ -222,17 +222,22 @@ get_pool_process(PoolName) ->
 
 
 rapply(Node,Mod,Fun,Args) ->
-	Parent = self(),
-	F = fun() ->
-				Parent ! {rapply,apply(Mod,Fun,Args)}
-		end,
-	spawn(Node,F),
-	receive
-		{rapply,Ret} ->
-			Ret
-	after 10000 ->
-			?ERROR_MSG("rapply() failed!",[]),
-			{error,timeout}
+	try
+		Parent = self(),
+		F = fun() ->
+					Parent ! {rapply,apply(Mod,Fun,Args)}
+			end,
+		spawn(Node,F),
+		receive
+			{rapply,Ret} ->
+				Ret
+		after 10000 ->
+				?ERROR_MSG("rapply() failed!",[]),
+				{error,timeout}
+		end
+	catch
+		_:Err ->
+			{error,Err}
 	end.
 
 			%% 	string:str(binary_to_list(Subject),binary_to_list(Pat)).

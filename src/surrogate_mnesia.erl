@@ -27,13 +27,12 @@ remove_disc_node(Node) ->
 			try
 			
 				lists:foreach(fun(X) ->
-									  spawn(X,fun() -> Self ! {stopreq,mnesia:stop()} end),
-									  receive
-										  {stopreq,Res} ->
-											  Res
-									  after 10000 ->
+									  case proxylib:rapply(X,mnesia,stop,[]) of
+										  {error,timeout} ->
 											  ?ERROR_MSG("Timeout stopping node ~p~n",[X]),
-											  throw(stop_timeout)
+											  throw(stop_timeout);
+										  Res ->
+											  Res
 									  end end,
 							  DiscNodes),
 				case mnesia:delete_schema(DiscNodes) of
@@ -51,14 +50,13 @@ remove_disc_node(Node) ->
 						throw(create_error)
 				end,
 				lists:foreach(fun(X) ->
-									  spawn(X,fun() -> self ! {startreq,mnesia:start()} end),
-									  receive
-										  {startreq,SRes} ->
-											  SRes
-									  after 10000 ->
+									  case proxylib:rapply(X,mnesia,start,[]) of
+										  {error,timeout} ->
 											  ?ERROR_MSG("Timeout starting node ~p~nMnesia was not yet restored from backup: ~p~n",[X,BakFile]),
-											  throw(start_timeout)
+											  throw(start_timeout);
+										  Res -> Res
 									  end end,
+											  
 							  NewDiscNodes),
 				case mnesia:restore("/tmp/mnesia.bak",[{recreate_tables,Tables}]) of
 					{atomic,Tabs} ->
