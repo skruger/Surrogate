@@ -60,8 +60,8 @@ remove_disc_node(Node) ->
 				throw(backup_error)
 		end,
 		lists:foreach(fun(X) ->
-							  case proxylib:rapply(X,mnesia,stop,[]) of
-								  {error,timeout} ->
+							  case rpc:call(X,mnesia,stop,[],5000) of
+								  {badrpc,timeout} ->
 									  ?ERROR_MSG("Timeout stopping node ~p~n",[X]),
 									  throw(stop_timeout);
 								  Res ->
@@ -83,8 +83,8 @@ remove_disc_node(Node) ->
 				ok
 		end,
 		lists:foreach(fun(X) ->
-							  case proxylib:rapply(X,mnesia,start,[]) of
-								  {error,timeout} ->
+							  case rpc:call(X,mnesia,start,[],5000) of
+								  {badrpc,timeout} ->
 									  ?ERROR_MSG("Timeout starting node ~p~nMnesia was not yet restored from backup: ~p~n",[X,BakFile]),
 									  throw(start_timeout);
 								  Res -> Res
@@ -110,19 +110,10 @@ disc_nodes() ->
 add_discless_node(Node) ->
 	NodeList = [Node|mnesia:system_info(extra_db_nodes)],
 	?INFO_MSG("Adding extra_db_node ~p (NodeList: ~p)~n",[Node,NodeList]),
-	proxylib:rapply(Node,mnesia,stop,[]),
-	proxylib:rapply(Node,mnesia,delete_schema,[[Node]]),
-	proxylib:rapply(Node,mnesia,start,[]),
+	rpc:call(Node,mnesia,stop,[]),
+	rpc:call(Node,mnesia,delete_schema,[[Node]]),
+	rpc:call(Node,mnesia,start,[]),
 	mnesia:change_config(extra_db_nodes,NodeList).
-
-%% remove_discless_node(Node) ->
-%% 	NodeList = lists:delete(Node,mnesia:system_info(extra_db_nodes)),
-%% 	proxylib:rapply(Node,mnesia,stop,[]),
-%% 	?INFO_MSG("Removing discless node ~p~n",[Node]),
-%%  	mnesia:del_table_copy(schema,Node),
-%% 	mnesia:change_config(extra_db_nodes,NodeList),
-%% 	mnesia:delete_schema([Node]).
-	
 
 
 delete_all() ->

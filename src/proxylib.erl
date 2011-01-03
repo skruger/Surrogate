@@ -14,7 +14,7 @@
 
 %% -export([send/2,setopts/2]).
 
--export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0,rapply/4]).
+-export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
 
 %% -export([re/1]).
 %%
@@ -221,24 +221,24 @@ get_pool_process(PoolName) ->
 	{global,list_to_atom("balancer_pool_"++atom_to_list(PoolName))}.
 
 
-rapply(Node,Mod,Fun,Args) ->
-	try
-		Parent = self(),
-		F = fun() ->
-					Parent ! {rapply,apply(Mod,Fun,Args)}
-			end,
-		spawn(Node,F),
-		receive
-			{rapply,Ret} ->
-				Ret
-		after 10000 ->
-				?ERROR_MSG("rapply() failed!",[]),
-				{error,timeout}
-		end
-	catch
-		_:Err ->
-			{error,Err}
-	end.
+%% rapply(Node,Mod,Fun,Args) ->
+%% 	try
+%% 		Parent = self(),
+%% 		F = fun() ->
+%% 					Parent ! {rapply,apply(Mod,Fun,Args)}
+%% 			end,
+%% 		spawn(Node,F),
+%% 		receive
+%% 			{rapply,Ret} ->
+%% 				Ret
+%% 		after 10000 ->
+%% 				?ERROR_MSG("rapply() failed!",[]),
+%% 				{error,timeout}
+%% 		end
+%% 	catch
+%% 		_:Err ->
+%% 			{error,Err}
+%% 	end.
 
 			%% 	string:str(binary_to_list(Subject),binary_to_list(Pat)).
 
