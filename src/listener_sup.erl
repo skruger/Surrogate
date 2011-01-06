@@ -14,7 +14,7 @@
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/0,make_childspec/1]).
+-export([start_link/0,make_childspec/1,ip_listener_list/2,ip_sup_name/1]).
 
 %% --------------------------------------------------------------------
 %% Internal exports
@@ -57,10 +57,22 @@ start_link() ->
 
 init([]) ->
 	ListenSpec = proxyconf:get(listeners,[]),
-	?DEBUG_MSG("Got listeners: ~n~p~n",[ListenSpec]),
+	ListenPropList = ip_listener_list(ListenSpec,[]),
+	?DEBUG_MSG("Got listeners: ~n~p~n",[ListenPropList]),
+	LCSpecs = lists:map(fun(X) -> ip_listener_childspec(X,ListenPropList) end,proplists:get_keys(ListenPropList)),
+	Children = lists:flatten([listen_childspec(proplists:get_all_values({ip,{0,0,0,0}},ListenPropList),[])|LCSpecs]),
 	{ok,{{one_for_one,15,5},
-		 listen_childspec(ListenSpec,[])
-		}}.
+		 Children
+		}};
+
+init({{ip,_IP},Listeners}) ->
+	{ok,{{one_for_one,15,5},
+		 listen_childspec(Listeners,[])
+		}};
+
+init(Args) ->
+	?DEBUG_MSG("Unknown arguments to init: ~p~n",[Args]),
+	ignore.
 
 %% init(ConfName) ->
 %% 	CSpecs = proxy_childspecs(ConfName),
@@ -68,6 +80,29 @@ init([]) ->
 %% 	{ok,{{one_for_one,15,5}, 
 %% 		 CSpecs
 %% 		 }}.
+
+ip_listener_childspec({ip,{0,0,0,0}},_) -> [];
+ip_listener_childspec({ip,_}=Key,ListenPropList) ->
+	ListenSpecs = proplists:get_all_values(Key,ListenPropList),
+	SupName = ip_sup_name(Key),
+	{SupName,{supervisor,start_link,[{local,SupName},?MODULE,{Key,ListenSpecs}]},
+	 permanent,10000,supervisor,[]}.
+		
+		
+	
+ip_sup_name({ip,IP}) ->
+	list_to_atom(lists:flatten(io_lib:format("listener_~p_~p_~p_~p_sup",tuple_to_list(IP)))).
+
+ip_listener_list([],Acc) -> Acc;
+ip_listener_list([L|R],Acc) ->
+	case tuple_to_list(L) of
+%% 		[_,{ip,{0,0,0,0}}|_] ->
+%% 			ip_listener_list(R,Acc);
+		[_,{ip,_}=IP,Port|_] ->
+			ip_listener_list(R,[{IP,L}|Acc]);
+		_ ->
+			ip_listener_list(R,Acc)
+	end.
 
 listen_childspec([],Acc) ->
 	Acc;
@@ -120,24 +155,6 @@ make_childspec(L) ->
 			?ERROR_MSG("Unsupported listen spec:~n~p~n",[Undef]),
 			[]
 	end.
-
-
-
-%% 
-%% proxy_childspecs(ConfName) ->
-%% 	Conf = proxyconf:get(ConfName,[]),
-%% 	proxy_childspec_list(Conf,[]).
-%% 
-%% proxy_childspec_list([],Acc) ->
-%% 	Acc;
-%% proxy_childspec_list([{CName,Props}|R],Acc) ->
-%% 	Spec = {CName,
-%% 			{CName,start_link,[Props]},
-%% 			permanent,
-%% 			10000,
-%% 			worker,
-%% 			[]},
-%% 	proxy_childspec_list(R,[Spec|Acc]).
 
 %% ====================================================================
 %% Internal functions
