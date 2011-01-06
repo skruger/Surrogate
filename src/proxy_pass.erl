@@ -32,12 +32,18 @@
 %% ====================================================================
 %% External functions
 %% ====================================================================
-start(Args) ->
-	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
 
-start(Node,Args) when Node == self() ->
-	?WARN_MSG("Attempting remote start to self (~p).~n",[Node]),
-	start(Args);
+start(Args) ->
+	case proplists:get_value(worker_pool,Args#proxy_pass.config,'NONE') of
+		'NONE' ->
+			do_start(Args);
+		WorkerPool ->
+			start(worker_pool:next(WorkerPool),Args)
+	end.
+
+start(Node,Args) when Node == node() ->
+%% 	?WARN_MSG("Attempting remote start to self (~p).~n",[Node]),
+	do_start(Args);
 start(Node,Args) ->
 	case net_adm:ping(Node) of
 		pong ->
@@ -47,15 +53,19 @@ start(Node,Args) ->
 				Ret -> Ret
 			after 5000 -> 
 					?ERROR_MSG("Timeout passing traffic to worker node (~p).  Starting locally.~n",[Node]),
-					start(Args)
+					do_start(Args)
 			end;
 		pang ->
 			?CRITICAL("Could not find node: ~p.  Starting locally.~n",[Node]),
-			start(Args)
+			do_start(Args)
 	end.
 
+do_start(Args) ->
+	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
+
+
 start_remote(Parent,Args) ->
-	Ret = ?MODULE:start(Args),
+	Ret = do_start(Args),
 	erlang:send(Parent,Ret),
 %% 	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
 	ok.

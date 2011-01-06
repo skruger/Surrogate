@@ -108,12 +108,17 @@ disc_nodes() ->
 
 
 add_discless_node(Node) ->
-	NodeList = [Node|mnesia:system_info(extra_db_nodes)],
-	?INFO_MSG("Adding extra_db_node ~p (NodeList: ~p)~n",[Node,NodeList]),
-	rpc:call(Node,mnesia,stop,[]),
-	rpc:call(Node,mnesia,delete_schema,[[Node]]),
-	rpc:call(Node,mnesia,start,[]),
-	mnesia:change_config(extra_db_nodes,NodeList).
+	case lists:member(Node,mnesia:system_info(db_nodes)) of
+		false ->
+			NodeList = [Node|mnesia:system_info(extra_db_nodes)],
+			?INFO_MSG("Adding extra_db_node ~p (NodeList: ~p)~n",[Node,NodeList]),
+			rpc:call(Node,mnesia,stop,[]),
+			rpc:call(Node,mnesia,delete_schema,[[Node]]),
+			rpc:call(Node,mnesia,start,[]),
+			mnesia:change_config(extra_db_nodes,NodeList);
+		_ ->
+			{error, already_node}
+	end.
 
 
 delete_all() ->

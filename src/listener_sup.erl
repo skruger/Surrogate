@@ -98,7 +98,7 @@ ip_listener_list([L|R],Acc) ->
 	case tuple_to_list(L) of
 %% 		[_,{ip,{0,0,0,0}}|_] ->
 %% 			ip_listener_list(R,Acc);
-		[_,{ip,_}=IP,Port|_] ->
+		[_,{ip,_}=IP,_Port|_] ->
 			ip_listener_list(R,[{IP,L}|Acc]);
 		_ ->
 			ip_listener_list(R,Acc)

@@ -90,7 +90,16 @@ init(State) ->
 		_ ->
 			ok
 	end,
-	
+	case proplists:get_value(extra_db_nodes,State#state.config_terms,[]) of
+		[] ->
+			ok;
+		Nodes when is_list(Nodes) ->
+			?INFO_MSG("Adding extra_db_nodes: ~p~n",[Nodes]),
+			mnesia:change_config(extra_db_nodes,Nodes);
+		Node when is_atom(Node) ->
+			?INFO_MSG("Adding extra_db_nodes: ~p~n",[Node]),
+			mnesia:change_config(extra_db_nodes,[Node])
+	end,
 	case proplists:get_value(mysql_conn,State#state.config_terms,false) of
 		{Host, Port, User, Password, Database} = MysqlConf ->
 			F = fun() ->
