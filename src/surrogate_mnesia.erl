@@ -10,7 +10,7 @@
 %%
 %% Exported Functions
 %%
--export([delete_all/0,remove_disc_node/1,add_disc_node/2,tables/0,backup_tables/1,disc_nodes/0,add_discless_node/1]).
+-export([delete_all/0,remove_disc_node/1,stop_remove_disc_node/1,add_disc_node/2,tables/0,backup_tables/1,disc_nodes/0,add_discless_node/1]).
 
 %%
 %% API Functions
@@ -46,6 +46,17 @@ add_disc_node(Node,Props) ->
 	
 
 remove_disc_node(Node) ->
+	Tables = tables(),
+	RM = lists:map(fun(X) -> {X,mnesia:del_table_copy(X,Node)} end,Tables),
+	case rpc:call(Node,mnesia,stop,[],5000) of
+		{badrpc,Err} ->
+			{error,Err};
+		_ ->
+			[mnesia:del_table_copy(schema,Node)|RM]
+	end.
+		
+
+stop_remove_disc_node(Node) ->
 	BakFile = "/tmp/mnesia-"++os:getpid()++".bak",
 	?WARN_MSG("Backing up mnesia to ~p before removing disc node.",[BakFile]),
 	DiscNodes = disc_nodes(),
@@ -110,12 +121,12 @@ disc_nodes() ->
 add_discless_node(Node) ->
 	case lists:member(Node,mnesia:system_info(db_nodes)) of
 		false ->
-			NodeList = [Node|mnesia:system_info(extra_db_nodes)],
-			?INFO_MSG("Adding extra_db_node ~p (NodeList: ~p)~n",[Node,NodeList]),
+%% 			NodeList = [Node|mnesia:system_info(extra_db_nodes)],
+			?INFO_MSG("Adding extra_db_node ~p ~n",[Node]),
 			rpc:call(Node,mnesia,stop,[]),
 			rpc:call(Node,mnesia,delete_schema,[[Node]]),
 			rpc:call(Node,mnesia,start,[]),
-			mnesia:change_config(extra_db_nodes,NodeList);
+			mnesia:change_config(extra_db_nodes,[Node]);
 		_ ->
 			{error, already_node}
 	end.

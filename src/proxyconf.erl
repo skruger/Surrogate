@@ -92,20 +92,13 @@ init(State) ->
 	end,
 	case proplists:get_value(extra_db_nodes,State#state.config_terms,[]) of
 		[] ->
-			?INFO_MSG("Not reconnecting with any DB nodes.~n",[]),
 			ok;
-		Nodes0 when is_list(Nodes0) ->
-			Nodes = 
-				lists:filter(fun(N) ->
-									 case net_adm:ping(N) of
-										 pong ->
-											 true;
-										 pang ->
-											 ?ERROR_MSG("extra_db_nodes database node unavailable: ~p~n",[N]),
-											 false
-									 end end,Nodes0),
-			MR1 = mnesia:change_config(extra_db_nodes,Nodes),
-			?INFO_MSG("Adding extra_db_nodes: ~p~n~p~n",[Nodes,MR1])
+		Nodes when is_list(Nodes) ->
+			?INFO_MSG("Adding extra_db_nodes: ~p~n",[Nodes]),
+			mnesia:change_config(extra_db_nodes,Nodes);
+		Node when is_atom(Node) ->
+			?INFO_MSG("Adding extra_db_nodes: ~p~n",[Node]),
+			mnesia:change_config(extra_db_nodes,[Node])
 	end,
 	case proplists:get_value(mysql_conn,State#state.config_terms,false) of
 		{Host, Port, User, Password, Database} = MysqlConf ->
