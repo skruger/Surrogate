@@ -24,6 +24,8 @@
 -record(worker_pool,{pool,active}).
 -record(worker_node_pool,{pool_node,active}).
 
+-record(cluster_supervisor_childspec,{name,node,supervisor,child_spec}).
+
 -record(api_command,{module,function,description="",format=""}).
 
 -record(gen_balancer_state,{balancer_mod,pool,active_pool,local_state}).

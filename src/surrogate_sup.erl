@@ -69,12 +69,6 @@ init([]) ->
 		   10000,
 		   worker,
 		   []},
-		  {worker_manager,
-		   {worker_manager,start_link,[]},
-		   permanent,
-		   10000,
-		   worker,
-		   []},
 		  {balance_sup,
 		   {balance_sup,start_link,[]},
 		   permanent,
@@ -86,7 +80,8 @@ init([]) ->
 		   permanent,
 		   10000,
 		   supervisor,
-		   []}
+		   []},
+		  {cluster_supervisor_listener,{cluster_supervisor,start_link,[listener]},permanent,1000,worker,[]}
 		 ]}}.
 
 %% ====================================================================

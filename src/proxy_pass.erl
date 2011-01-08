@@ -151,7 +151,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 		_ ->
 			Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 			ReqHdr = State#proxy_pass.request,
-			Via = io_lib:format("Via: ~s ~s (Surrogate)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost()]),
+			Via = io_lib:format("Via: ~s ~s (Surrogate ~p)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost(),node()]),
 			Hdr0 = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization","accept-encoding"],ReqHdr#header_block.headers),
 			Hdr1 = 
 			case proplists:get_value(enable_gzip,State#proxy_pass.config,false) of

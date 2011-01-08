@@ -67,7 +67,7 @@ get_spec() ->
 init([]) ->
 	Pools = proxyconf:get(balance_pools,[]),
     Children = pool_children(Pools,[]),
-	{ok,{{one_for_all,0,1}, Children}}.
+	{ok,{{one_for_all,5,10}, Children}}.
 
 
 pool_children([],C) ->
@@ -78,21 +78,6 @@ pool_children([{Pool,PoolMod,PoolProps}|R],C) ->
 			 permanent,2000,worker,[]},
 	?DEBUG_MSG("Add child: ~p~n",[Child]),
 	pool_children(R,[Child|C]).
-
-%% 
-%% pool_children([],C) ->
-%% 	C;
-%% pool_children([{Pool,PoolProps}|R],C) ->
-%% 	CName = proxylib:get_pool_process(Pool),
-%% 	Mode = proplists:get_value(mode,PoolProps,roundrobin),
-%% 	case proplists:get_value(hosts,PoolProps,[]) of
-%% 		[] ->
-%% 			pool_children(R,C);
-%% 		_Hosts ->
-%% 			Child = {CName,{balancer,start_pool,[Pool,Mode]},
-%% 					 permanent,2000,worker,[]},
-%% 			pool_children(R,[Child|C])
-%% 	end.
 
 %% ====================================================================
 %% Internal functions

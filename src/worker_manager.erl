@@ -16,7 +16,7 @@
 %% External exports
 -export([start_link/0,list_active_nodes/0]).
 
--export([add_pool/1,add_pool_node/2,remove_pool_node/2,remove_node/1,remove_pool/1,list_pools/0,list_pool_nodes/1,list_node_pools/1,set_pool_node_state/2]).
+-export([add_pool/1,add_pool_node/2,remove_pool_node/2,remove_node/1,remove_pool/1,list_pools/0,list_pool_nodes/1,list_node_pools/1,set_pool_node_state/2,list_nodes/1]).
 
 
 %% gen_server callbacks
@@ -261,7 +261,19 @@ check_nodes() ->
 								  disable_node(X)
 						  end
 				  end,
-				  ets:tab2list(worker_node)).
+				  list_nodes('_')).
+
+list_nodes(Active) ->
+	F = fun() ->
+				Match = #worker_node{active=Active,node='$1',_='_'},
+				lists:map(fun(K) ->
+								  [R1|_] = mnesia:read(worker_node,K),R1
+						  end,mnesia:select(worker_node,[{Match,[],['$1']}]))
+		end,
+	case mnesia:transaction(F) of
+		{atomic,R} -> R;
+		{aborted,Err} -> {error,Err}
+	end.
 
 enable_node(X) ->
 	if X#worker_node.active ->

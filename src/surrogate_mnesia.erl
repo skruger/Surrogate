@@ -10,7 +10,7 @@
 %%
 %% Exported Functions
 %%
--export([delete_all/0,remove_disc_node/1,stop_remove_disc_node/1,add_disc_node/2,tables/0,backup_tables/1,disc_nodes/0,add_discless_node/1]).
+-export([delete_all/0,remove_disc_node/1,stop_remove_disc_node/1,add_disc_node/2,tables/0,disc_nodes/0,add_discless_node/1]).
 
 %%
 %% API Functions
@@ -19,17 +19,17 @@
 tables() ->
 	lists:delete(schema,mnesia:system_info(tables)).
 
-backup_tables(T) ->
-	TableAttributes = 
-		lists:map(fun (X) ->
-						   [X,[{attributes,mnesia:table_info(X,attributes)}]] end,T),
-	TableData =
-		lists:map(fun (X) ->
-						   {X,ets:tab2list(X)}
-						   end,T),
-	 
-		
-	[{tables,TableAttributes},{tabledata,TableData}].
+%% backup_tables(T) ->
+%% 	TableAttributes = 
+%% 		lists:map(fun (X) ->
+%% 						   [X,[{attributes,mnesia:table_info(X,attributes)}]] end,T),
+%% 	TableData =
+%% 		lists:map(fun (X) ->
+%% 						   {X,ets:tab2list(X)}
+%% 						   end,T),
+%% 	 
+%% 		
+%% 	[{tables,TableAttributes},{tabledata,TableData}].
 
 add_disc_node(Node,Props) ->
 	add_discless_node(Node),
