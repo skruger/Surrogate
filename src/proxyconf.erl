@@ -51,7 +51,13 @@ start_link(Config) ->
 	end.
 
 get(Prop,Def) ->
-	gen_server:call(?MODULE,{property,Prop,Def}).
+	try
+		gen_server:call(?MODULE,{property,Prop,Def})
+	catch
+		_:Err ->
+			?ERROR_MSG("Error getting settings: ~p~n",[Err]),
+			Def
+	end.
 
 reload() ->
 	gen_server:cast(?MODULE,reload).
@@ -90,6 +96,23 @@ init(State) ->
 		_ ->
 			ok
 	end,
+	case proplists:get_value(role,State#state.config_terms,worker) of
+		listener ->
+			F0 = fun() ->
+						Spec = {worker_manager,{worker_manager,start_link,[]},
+								permanent,10000,worker,[]},
+						case supervisor:start_child(surrogate_sup,Spec) of
+							{error,_} = SupErr ->
+								?CRITICAL("Error starting worker_manager with config: ~p~n",[Spec]);
+							_ -> ok
+						end
+				end,
+			spawn(F0);
+		_ ->
+			ok
+	end,
+			
+		  
 	case proplists:get_value(extra_db_nodes,State#state.config_terms,[]) of
 		[] ->
 			ok;
