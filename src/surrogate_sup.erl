@@ -80,8 +80,8 @@ init([]) ->
 		   permanent,
 		   10000,
 		   supervisor,
-		   []},
-		  {cluster_supervisor_listener,{cluster_supervisor,start_link,[listener]},permanent,1000,worker,[]}
+		   []}
+		  
 		 ]}}.
 
 %% ====================================================================
