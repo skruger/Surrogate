@@ -13,14 +13,14 @@
 -include("surrogate.hrl").
 %% --------------------------------------------------------------------
 %% External exports
--export([get_interfaces/0,get_interface_addr/1,ip_list_to_tuple/1,get_interface_proplist/1,get_interface_proplist/0,discover_node_interfaces/1]).
+-export([get_interfaces/0,get_interface_addr/1,ip_list_to_tuple/1,get_interface_proplist/1,get_interface_proplist/0,discover_node_interfaces/1,find_alias_node/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {}).
 
--record(network_interfaces,{node,interface,address}).
+-record(network_interfaces,{node,interface,address,alias}).
 
 %% ====================================================================
 %% External functions
@@ -56,7 +56,9 @@ get_interface_proplist() ->
 
 get_interface_proplist(Interfaces) ->
 	lists:map(fun(Iface) ->
-					  {list_to_atom(Iface),ip_list_to_tuple(get_interface_addr(Iface))}
+					  #network_interfaces{node=node(),interface=list_to_atom(Iface),
+										  address=ip_list_to_tuple(get_interface_addr(Iface)),
+										  alias=is_alias_interface(Iface)}
 			  end,Interfaces).
 
 is_alias_interface(Iface) ->
@@ -67,8 +69,37 @@ is_alias_interface(Iface) ->
 			true
 	end.
 
+discover_node_interfaces(Node) when Node == node() ->
+	get_interface_proplist();
 discover_node_interfaces(Node) ->
-	rpc:call(Node,?MODULE,get_interface_proplist,[]).
+	try
+		rpc:call(Node,?MODULE,get_interface_proplist,[])
+	catch
+		_:Err ->
+			?ERROR_MSG("Rpc error when discovering node interfaces.  ~p~n",[Err]),
+			[]
+	end.
+
+find_alias_node(Address) ->
+	Interfaces = 
+		lists:flatten(
+		  lists:map(fun(N) ->
+							try
+								discover_node_interfaces(N)
+							catch
+								_:Err ->
+									?ERROR_MSG("Error discovering interfaces on node: ~p~n~p~n",[N,Err]),
+									[]
+							end
+					end,[node()|nodes()])),
+	?DEBUG_MSG("Interfaces: ~p~n",[Interfaces]),
+	lists:filter(fun(IntInfo) ->
+						 case IntInfo of
+							 #network_interfaces{address=Address} ->
+								 true;
+							 _ -> false
+						 end end,Interfaces).
+	
 
 %% ====================================================================
 %% Server functions
