@@ -24,17 +24,24 @@
 -record(worker_pool,{pool,active}).
 -record(worker_node_pool,{pool_node,active}).
 
--record(cluster_supervisor_childspec,{name,node,supervisor,child_spec}).
+
 
 -record(api_command,{module,function,description="",format=""}).
 
 -record(gen_balancer_state,{balancer_mod,pool,active_pool,local_state}).
 -record(client_info,{remote_addr,request_header}).
 
--define(CRITICAL(X,Y), surrogate_log:append(0,?MODULE,lists:flatten(io_lib:format(X,Y)))).
--define(ERROR_MSG(X,Y), surrogate_log:append(1,?MODULE,lists:flatten(io_lib:format(X,Y)))).
--define(WARN_MSG(X,Y), surrogate_log:append(2,?MODULE,lists:flatten(io_lib:format(X,Y)))).
--define(INFO_MSG(X,Y), surrogate_log:append(3,?MODULE,lists:flatten(io_lib:format(X,Y)))).
--define(DEBUG_MSG(X,Y), surrogate_log:append(4,?MODULE,lists:flatten(io_lib:format(X,Y)))).
+-define(CRITICAL(X,Y), error_logger:error_msg("CRITICAL:\n"++X,Y)).
+-define(ERROR_MSG(X,Y), error_logger:error_msg(X,Y)).
+-define(WARN_MSG(X,Y), error_logger:warning_msg(X,Y)).
+-define(INFO_MSG(X,Y), error_logger:info_msg(X,Y)).
+-define(DEBUG_MSG(X,Y), error_logger:info_msg("DEBUG:\n"++X,Y)).
+
+%% -define(CRITICAL(X,Y), surrogate_log:append(0,?MODULE,lists:flatten(io_lib:format(X,Y)))).
+%% -define(ERROR_MSG(X,Y), surrogate_log:append(1,?MODULE,lists:flatten(io_lib:format(X,Y)))).
+%% -define(WARN_MSG(X,Y), surrogate_log:append(2,?MODULE,lists:flatten(io_lib:format(X,Y)))).
+%% -define(INFO_MSG(X,Y), surrogate_log:append(3,?MODULE,lists:flatten(io_lib:format(X,Y)))).
+%% -define(DEBUG_MSG(X,Y), surrogate_log:append(4,?MODULE,lists:flatten(io_lib:format(X,Y)))).
+
 
 -define(ACCESS_LOG(C,P,U,X), surrogate_log:access(C,P,U,X)).

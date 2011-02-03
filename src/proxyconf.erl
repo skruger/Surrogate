@@ -107,6 +107,8 @@ init(State) ->
 						end
 				end,
 			F1 = fun() ->
+						 
+						 
 						Spec = {cluster_supervisor_listener,{cluster_supervisor,start_link,[listener]},permanent,5000,worker,[]},
 						case supervisor:start_child(surrogate_sup,Spec) of
 							{error,_} = SupErr ->
@@ -115,7 +117,8 @@ init(State) ->
 						end
 				end,
 			spawn(F0),
-			spawn(F1);
+			cluster_supervisor:start_cluster(listener);
+%% 			spawn(F1);
 		_ ->
 			ok
 	end,

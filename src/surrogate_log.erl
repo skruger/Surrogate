@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/0,start_link/1,start_link/2,append/3,access/4,log_level/1,get_accesslog/0,get_errorlog/0]).
+-export([start_link/0,start_link/1,start_link/2,append/3,access/4,log_level/1,get_accesslog/0,get_errorlog/0,restart_errorlog/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -33,6 +33,23 @@ start_link(LogFile) ->
 start_link(ErrorLog,AccessLog) ->
 	gen_server:start_link({local,?MODULE},?MODULE,[ErrorLog,AccessLog],[]).
 
+restart_errorlog() ->
+	case surrogate_log:get_errorlog() of
+		none ->
+			io:format("No log file.~n");
+		LogName ->
+			OldLogName =
+			case error_logger:logfile(filename) of
+				{error,no_log_file} ->
+					none;
+				Old ->
+					error_logger:logfile(close),
+					Old
+			end,
+			error_logger:logfile({open,LogName}),
+			error_logger:warning_msg("Replaced log file: ~p~n",[OldLogName])
+	end.
+	
 
 append(Level,Mod,Message) ->
 	gen_server:cast(?MODULE,{log,Level,Mod,Message}).
@@ -72,18 +89,18 @@ get_errorlog() ->
 %% --------------------------------------------------------------------
 init([]) ->
 	try
-	ErrLog = case get_errorlog() of
-				 none ->
-					 undefined;
-				 EFileName ->
-					 case file:open(EFileName,[write,append,delayed_write]) of
-						 {ok,EFile} ->
-							 EFile;
-						 EErr ->
-							 error_logger:error_msg("Could not open error log file ~p (~p)~n",[EFileName,EErr]),
-							 undefined
-					 end
-			 end,
+%% 	ErrLog = case get_errorlog() of
+%% 				 none ->
+%% 					 undefined;
+%% 				 EFileName ->
+%% 					 case file:open(EFileName,[write,append,delayed_write]) of
+%% 						 {ok,EFile} ->
+%% 							 EFile;
+%% 						 EErr ->
+%% 							 error_logger:error_msg("Could not open error log file ~p (~p)~n",[EFileName,EErr]),
+%% 							 undefined
+%% 					 end
+%% 			 end,
 	AccessLog = case get_accesslog() of
 					none -> undefined;
 					AFileName ->
@@ -95,7 +112,8 @@ init([]) ->
 								undefined
 						end
 				end,
-	{ok,#state{errorlog=ErrLog,accesslog=AccessLog,log_level=5}}
+	{ok,#state{accesslog=AccessLog,log_level=5}}
+	%% errorlog=ErrLog,
 	catch
 		_:Err ->
 			io:format("Error starting ~p: ~p~n",[?MODULE,Err]),

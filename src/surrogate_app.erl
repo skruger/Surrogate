@@ -35,6 +35,7 @@ run_test() ->
 	run().
 
 run() ->
+	surrogate_log:restart_errorlog(),
 	case init:get_argument(appmon) of
 		{ok,_} ->
 			appmon:start();
@@ -63,6 +64,7 @@ run() ->
 	application:start(crypto),
 	application:start(public_key),
 	application:start(ssl),
+	application:start(cluster_supervisor),
 	application:load(surrogate),
 	case application:start(surrogate) of
 		ok ->
