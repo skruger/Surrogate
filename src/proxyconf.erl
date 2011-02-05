@@ -106,18 +106,18 @@ init(State) ->
 							_ -> ok
 						end
 				end,
-			F1 = fun() ->
-						 
-						 
-						Spec = {cluster_supervisor_listener,{cluster_supervisor,start_link,[listener]},permanent,5000,worker,[]},
-						case supervisor:start_child(surrogate_sup,Spec) of
-							{error,_} = SupErr ->
-								?CRITICAL("Error starting cluster_supervisor_listener with config: ~p~nError: ~p~n",[Spec,SupErr]);
-							_ -> ok
-						end
-				end,
-			spawn(F0),
-			cluster_supervisor:start_cluster(listener);
+			spawn(F0);
+%% 			F1 = fun() ->
+%% 						 
+%% 						 
+%% 						Spec = {cluster_supervisor_listener,{cluster_supervisor,start_link,[listener]},permanent,5000,worker,[]},
+%% 						case supervisor:start_child(surrogate_sup,Spec) of
+%% 							{error,_} = SupErr ->
+%% 								?CRITICAL("Error starting cluster_supervisor_listener with config: ~p~nError: ~p~n",[Spec,SupErr]);
+%% 							_ -> ok
+%% 						end
+%% 				end,
+%% 			cluster_supervisor:start_cluster(listener);
 %% 			spawn(F1);
 		_ ->
 			ok
