@@ -175,7 +175,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 			end,
 			case ConnHost of
 				{host,Host,Port} ->
-					case gen_tcp:connect(Host,Port,[binary,{active,false}],20000) of
+					case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
 						{ok,SSock0} ->
 							{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
 							gen_socket:send(SSock,RequestHeaders),

@@ -13,7 +13,7 @@
 -include("surrogate.hrl").
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1]).
+-export([start/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -24,8 +24,8 @@
 %% External functions
 %% ====================================================================
 
-start(MgrSpec) ->
- 	gen_server:start_link(?MODULE,[MgrSpec],[]).
+start(MgrSpec,Name) ->
+ 	gen_server:start_link({local,Name},?MODULE,[MgrSpec],[]).
 
 %% ====================================================================
 %% Server functions
@@ -116,21 +116,14 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 
 
-start_manager({http_management_api,RawBind,Port,Proplist}) ->
-	{Bind,BindStr} = case RawBind of
-						 {ip,{A1,A2,A3,A4}=B} ->
-							 {B,lists:flatten(io_lib:format("~p.~p.~p.~p:~p",[A1,A2,A3,A4,Port]))};
-						 A when is_list(A) ->
-							 {A,lists:flatten(io_lib:format("~s:~p",[A,Port]))};
-						 _ ->
-							 ?CRITICAL("Invalid Bind address format: ~p~n",[RawBind]),
-							 error
-					 end,
+start_manager({http_management_api,{ip,IP0},Port,Proplist}) ->
+	IP = proxylib:inet_parse(IP0),
+	BindStr = lists:flatten(io_lib:format("~s:~p",[proxylib:format_inet(IP),Port])),
 	SRoot = "/tmp/http-"++BindStr,
 	SDocRoot = SRoot++"/htdocs",
 	file:make_dir(SRoot),
 	file:make_dir(SDocRoot),
-	DefaultProps = [{port,Port},{bind_address,Bind},{server_root,SRoot},{document_root,SDocRoot},
+	DefaultProps = [{port,Port},{bind_address,IP},{server_root,SRoot},{document_root,SDocRoot},
 					{server_name,net_adm:localhost()},{erl_script_alias,{"/rpc",[surrogate_api]}},
 					{modules,[mod_esi,mod_alias]},{error_log,"error.log"}],
 	AllProps = update_http_manager_properties(Proplist,DefaultProps),

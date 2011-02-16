@@ -44,10 +44,12 @@ start_link(PropList) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 
-init([{proxy_socks45,Bind,Port,PropList}=A]) ->
+init([{proxy_socks45,{ip,IP0},Port,PropList}=A]) ->
    	?DEBUG_MSG("~p starting.~n~p~n",[?MODULE,A]),
+	Bind = {ip,proxylib:inet_parse(IP0)},
 %% 	Port = proplists:get_value(listen,PropList,1080),
-    case gen_tcp:listen(Port,[Bind,inet,binary,{active,false},{reuseaddr,true}]) of
+	InetVer = proxylib:inet_version(Bind),
+    case gen_tcp:listen(Port,[Bind,InetVer,binary,{active,false},{reuseaddr,true}]) of
 		{ok,ListenSock} ->
 			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self(),config=PropList},
 			gen_server:cast(self(),check_listeners),

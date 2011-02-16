@@ -100,9 +100,8 @@ ip_sup_name({ip,IP}) ->
 ip_listener_list([],Acc) -> Acc;
 ip_listener_list([L|R],Acc) ->
 	case tuple_to_list(L) of
-%% 		[_,{ip,{0,0,0,0}}|_] ->
-%% 			ip_listener_list(R,Acc);
-		[_,{ip,_}=IP,_Port|_] ->
+		[_,{ip,_}=IP0,_Port|_] ->
+			IP = {ip,proxylib:inet_parse(IP0)},
 			ip_listener_list(R,[{IP,L}|Acc]);
 		_ ->
 			ip_listener_list(R,Acc)
@@ -116,44 +115,44 @@ listen_childspec([L|R],Acc) ->
 	
 make_childspec(L) ->
 	try
+		?DEBUG_MSG("make_childspec(~p)~n",[L]),
 		case L of
-			{proxy_transparent,{ip,IP},Port,_} = S ->
+			{proxy_transparent,{ip,IP0},Port,_} = S ->
+				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_transparent,proxylib:format_inet(IP),Port]))),
 				Spec = {Name,{proxy_transparent,start_link,[S,Name]},
 						permanent, 10000,worker,[]},
 				[Spec];
-			{proxy_socks45,{ip,IP},Port,_} = S ->
+			{proxy_socks45,{ip,IP0},Port,_} = S ->
+				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_socks45,proxylib:format_inet(IP),Port]))),
 				Spec = {Name,{proxy_socks45,start_link,[S]},
 						permanent,10000,worker,[]},
 				[Spec];
-			{Bal,{ip,IP},Port,_} = S when Bal == balance_http ->
+			{Bal,{ip,IP0},Port,_} = S when Bal == balance_http ->
+				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[Bal,proxylib:format_inet(IP),Port]))),
 				Spec = {Name,{balance_http,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
-			{Bal,{ip,IP},Port,_,_,_} = S when Bal == balance_https ->
+			{Bal,{ip,IP0},Port,_,_,_} = S when Bal == balance_https ->
+				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[Bal,proxylib:format_inet(IP),Port]))),
 				Spec = {Name,{balance_http,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
-			{rest_rpc,{ip,IP},Port,_Opts} = S ->
+			{rest_rpc,{ip,IP0},Port,_Opts} = S ->
+				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("rest_rpc_~s:~p",[proxylib:format_inet(IP),Port]))),
 				Spec = {Name,{rest_rpc,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
-			{http_management_api,RawBind,Port,_Proplist} = S ->
-				BindStr = case RawBind of
-							  {ip,{A1,A2,A3,A4}} ->
-								  lists:flatten(io_lib:format("~p.~p.~p.~p:~p",[A1,A2,A3,A4,Port]));
-							  A when is_list(A) ->
-								  lists:flatten(io_lib:format("~s:~p",[A,Port]));
-							  _ ->
-								  ?CRITICAL("Invalid Bind address format: ~p~n",[RawBind]),
-								  error
-						  end,
+			{http_management_api,{ip,IP0},Port,_Proplist} = S ->
+				IP = proxylib:inet_parse(IP0),
+				?DEBUG_MSG("Processing: ~p~n",[S]),
+				BindStr = lists:flatten(io_lib:format("~s:~p",[proxylib:format_inet(IP),Port])),
 				Name = list_to_atom("management_api_"++BindStr),
-				Spec = {Name,{proxy_manager,start,[S]},
+				Spec = {Name,{proxy_manager,start,[S,Name]},
 						permanent,30000,worker,[]},
 				[Spec];
 			Undef ->

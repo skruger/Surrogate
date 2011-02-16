@@ -14,7 +14,8 @@
 
 %% -export([send/2,setopts/2]).
 
--export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0,format_inet/1,inet_version/1]).
+-export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
+-export([inet_parse/1,format_inet/1,inet_version/1]).
 
 %% -export([re/1]).
 %%
@@ -193,7 +194,21 @@ inet_version({_,_,_,_}) ->
 	inet;
 inet_version({_,_,_,_,_,_,_,_}) ->
 	inet6.
-					
+
+inet_parse({ip,IP}) ->
+	inet_parse(IP);
+inet_parse({_,_,_,_,_,_,_,_}=IP) ->
+	IP;
+inet_parse({_,_,_,_} = IP) ->
+	IP;
+inet_parse(IPStr) when is_list(IPStr) ->
+	case inet_parse:address(IPStr) of
+		{ok,IP} ->
+			IP;
+		_ ->
+			?CRITICAL("Invalid IP format: ~p~n",[IPStr]),
+			throw(invalid_ip)
+	end.
 
 %% method_has_data(Request,ResHdr) ->
 %% 	case parse_request(Request) of

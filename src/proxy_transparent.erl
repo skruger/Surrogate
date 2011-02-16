@@ -43,9 +43,10 @@ start_link(PropList,Name) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([{proxy_transparent,BindAddr,Port,PropList}=A]) ->
+init([{proxy_transparent,{ip,IP0},Port,PropList}=A]) ->
 	?INFO_MSG("~p starting.~n~p~n",[?MODULE,A]),
 %% 	Port = proplists:get_value(listen,PropList,3128),
+	BindAddr = {ip,proxylib:inet_parse(IP0)},
 	InetVer =
 		case BindAddr of
 			{ip,{_,_,_,_}} -> inet;
