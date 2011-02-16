@@ -14,7 +14,7 @@
 
 %% -export([send/2,setopts/2]).
 
--export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
+-export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0,format_inet/1,inet_version/1]).
 
 %% -export([re/1]).
 %%
@@ -131,7 +131,7 @@ parse_request(Req) ->
 	case re:run(Req,Proxy,[{capture,all,list}]) of
 		{match,[_,Method,FullPath,_,Proto]} ->
 %%  			io:format("Method: ~p~nFullPath: ~p~nProto: ~p~n~n",[Method,FullPath,Proto]),
-			HTTPPortProxy = "([[:alpha:]]*:\\/\\/[[:alnum:]-\\.]+):([[:digit:]]+)(.*)",
+			HTTPPortProxy = "([[:alpha:]]*:\\/\\/[[:alnum:]-\\.]+):([[:digit:]]+)(\\/.*)",
 			case re:run(FullPath,HTTPPortProxy,[{capture,all,list}]) of
 				{match,[_,Host,PortStr,Path]} ->
 %% 					?DEBUG_MSG("Method: ~p~nHost: ~p~nPort: ~p~nPath: ~p~nProto: ~p~n~n",[Method,Host,PortStr,Path,Proto]),
@@ -179,6 +179,22 @@ method_has_data(Req,Res) ->
 					true
 			end
 	end.
+
+format_inet({ip,IP}) ->
+	format_inet(IP);
+format_inet({_,_,_,_}=IP) ->
+	lists:flatten(io_lib:format("~p.~p.~p.~p",erlang:tuple_to_list(IP)));
+format_inet({_,_,_,_,_,_,_,_}=IP) ->
+	lists:flatten(io_lib:format("~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B",erlang:tuple_to_list(IP))).
+
+inet_version({ip,IP}) ->
+	inet_version(IP);
+inet_version({_,_,_,_}) ->
+	inet;
+inet_version({_,_,_,_,_,_,_,_}) ->
+	inet6.
+					
+
 %% method_has_data(Request,ResHdr) ->
 %% 	case parse_request(Request) of
 %% 		#request_rec{method="HEAD"} ->

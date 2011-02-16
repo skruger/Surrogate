@@ -47,7 +47,8 @@ start_link(Args) ->
 %% --------------------------------------------------------------------
 init({balance_http,Bind,Port,Props}=L) ->
 	?INFO_MSG("~p HTTP listening: ~p~n",[?MODULE,L]),
-	case gen_tcp:listen(Port,[Bind,inet,binary,{active,false},{reuseaddr,true}]) of
+	InetVer = proxylib:inet_version(Bind),
+	case gen_tcp:listen(Port,[Bind,InetVer,binary,{active,false},{reuseaddr,true}]) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
 			{ok, listen_master, #socket_state{type=http,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};

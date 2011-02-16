@@ -17,7 +17,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/1]).
+-export([start_link/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -27,8 +27,8 @@
 %% ====================================================================
 %% External functions
 %% ====================================================================
-start_link(PropList) ->
-	gen_server:start_link({local,?MODULE},?MODULE,[PropList],[]).
+start_link(PropList,Name) ->
+	gen_server:start_link({local,Name},?MODULE,[PropList],[]).
 
 
 %% ====================================================================
@@ -46,13 +46,25 @@ start_link(PropList) ->
 init([{proxy_transparent,BindAddr,Port,PropList}=A]) ->
 	?INFO_MSG("~p starting.~n~p~n",[?MODULE,A]),
 %% 	Port = proplists:get_value(listen,PropList,3128),
-    case gen_tcp:listen(Port,[BindAddr,inet,binary,{active,false},{reuseaddr,true}]) of
-		{ok,ListenSock} ->
-			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self(),config=PropList},
-			gen_server:cast(self(),check_listeners),
-			{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[]}};
-		Err ->
-			?ERROR_MSG("~p could not start: ~p",[?MODULE,Err]),
+	InetVer =
+		case BindAddr of
+			{ip,{_,_,_,_}} -> inet;
+			{ip,{_,_,_,_,_,_,_,_}} -> ?ERROR_MSG("Got inet6 address: ~p~n",[BindAddr]), inet6;
+			_ -> ?ERROR_MSG("Got unknown address type: ~p~n",[BindAddr]),inet
+		end,
+	try
+    	case gen_tcp:listen(Port,[BindAddr,InetVer,binary,{active,false},{reuseaddr,true}]) of
+			{ok,ListenSock} ->
+				Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self(),config=PropList},
+				gen_server:cast(self(),check_listeners),
+				{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[]}};
+			Err ->
+				?ERROR_MSG("~p could not start: ~p",[?MODULE,Err]),
+				{stop,error}
+		end
+	catch
+		_:CErr ->
+			?ERROR_MSG("~p could not start: ~p",[?MODULE,CErr]),
 			{stop,error}
 	end.
 

@@ -76,12 +76,14 @@ handle_call(_Msg,_From,State) ->
 	{reply,ok,State}.
 
 
-format_ip({A,B,C,D}) ->
-	lists:flatten(io_lib:format("~p.~p.~p.~p",[A,B,C,D]));
-format_ip(Info) ->
-	?WARN_MSG("~p Bad IP format: ~p~nReturning \"0.0.0.0\"",[self(),Info]),
-	"0.0.0.0".
+%% format_ip({A,B,C,D}) ->
+%% 	lists:flatten(io_lib:format("~p.~p.~p.~p",[A,B,C,D]));
+%% format_ip(Info) ->
+%% 	?WARN_MSG("~p Bad IP format: ~p~nReturning \"0.0.0.0\"",[self(),Info]),
+%% 	"0.0.0.0".
 	
+format_ip(IP) ->
+	proxylib:format_inet(IP).
 
 
 %% --------------------------------------------------------------------
