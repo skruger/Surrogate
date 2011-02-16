@@ -1,0 +1,78 @@
+digraph G {
+	edge [ len=2 labeldistance=2 ];
+	overlap=false;
+	splines=true;
+
+	nodevirtual_service_listner [
+		label="{<table>virtual_service_listner|<cols>virtual_service_id (bigint) [PK]\llistner_id (bigint) [PK]\l}",
+		shape=record ];
+	nodelistner_config [
+		label="{<table>listner_config|<cols>id (integer) [PK]\lenable_gzip (boolean)\lfilter_headers (string)\lfwd_proxy_auth (enum)\llb_pool (string)\llb_proxy_host (string)\llb_backend_port (int)\l}",
+		shape=record ];
+	nodestream_filter [
+		label="{<table>stream_filter|<cols>id (integer) [PK]\lname (string)\lmodule_value (string)\lhas_forward_mode (boolean)\lhas_reverse_mode (boolean)\l}",
+		shape=record ];
+	nodevirtual_service_listners [
+		label="{<table>virtual_service_listners|<cols>virtual_service_id (bigint) [PK]\llistner_id (bigint) [PK]\l}",
+		shape=record ];
+	nodelistner_config_stream_filters [
+		label="{<table>listner_config_stream_filters|<cols>listner_config_id (bigint) [PK]\lstream_filter_id (bigint) [PK]\l}",
+		shape=record ];
+	nodesf_guard_forgot_password [
+		label="{<table>sf_guard_forgot_password|<cols>id (integer) [PK]\luser_id (integer)\lunique_key (string)\lexpires_at (timestamp)\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodesf_guard_user_permission [
+		label="{<table>sf_guard_user_permission|<cols>user_id (integer) [PK]\lpermission_id (integer) [PK]\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodesf_guard_permission [
+		label="{<table>sf_guard_permission|<cols>id (integer) [PK]\lname (string)\ldescription (string)\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodesf_guard_group_permission [
+		label="{<table>sf_guard_group_permission|<cols>group_id (integer) [PK]\lpermission_id (integer) [PK]\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodesf_guard_remember_key [
+		label="{<table>sf_guard_remember_key|<cols>id (integer) [PK]\luser_id (integer)\lremember_key (string)\lip_address (string)\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodesf_guard_user [
+		label="{<table>sf_guard_user|<cols>id (integer) [PK]\lfirst_name (string)\llast_name (string)\lemail_address (string)\lusername (string)\lalgorithm (string)\lsalt (string)\lpassword (string)\lis_active (boolean)\lis_super_admin (boolean)\llast_login (timestamp)\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodesf_guard_group [
+		label="{<table>sf_guard_group|<cols>id (integer) [PK]\lname (string)\ldescription (string)\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodesf_guard_user_group [
+		label="{<table>sf_guard_user_group|<cols>user_id (integer) [PK]\lgroup_id (integer) [PK]\lcreated_at (timestamp)\lupdated_at (timestamp)\l}",
+		shape=record ];
+	nodelistner [
+		label="{<table>listner|<cols>id (integer) [PK]\llistner_type (enum)\lip_address (string)\lport (int)\lconfig_id (bigint)\l}",
+		shape=record ];
+	nodevirtual_service [
+		label="{<table>virtual_service|<cols>id (integer) [PK]\lname (string)\lenabled_status (boolean)\l}",
+		shape=record ];
+
+	nodevirtual_service_listners:cols -> nodevirtual_service:table [
+		label="virtual_service_id=id"];
+	nodevirtual_service_listners:cols -> nodelistner:table [
+		label="listner_id=id"];
+	nodelistner_config_stream_filters:cols -> nodelistner_config:table [
+		label="listner_config_id=id"];
+	nodelistner_config_stream_filters:cols -> nodestream_filter:table [
+		label="stream_filter_id=id"];
+	nodesf_guard_forgot_password:cols -> nodesf_guard_user:table [
+		label="user_id=id"];
+	nodesf_guard_user_permission:cols -> nodesf_guard_user:table [
+		label="user_id=id"];
+	nodesf_guard_user_permission:cols -> nodesf_guard_permission:table [
+		label="permission_id=id"];
+	nodesf_guard_group_permission:cols -> nodesf_guard_group:table [
+		label="group_id=id"];
+	nodesf_guard_group_permission:cols -> nodesf_guard_permission:table [
+		label="permission_id=id"];
+	nodesf_guard_remember_key:cols -> nodesf_guard_user:table [
+		label="user_id=id"];
+	nodesf_guard_user_group:cols -> nodesf_guard_user:table [
+		label="user_id=id"];
+	nodesf_guard_user_group:cols -> nodesf_guard_group:table [
+		label="group_id=id"];
+	nodelistner:cols -> nodelistner_config:table [
+		label="config_id=id"];
+}

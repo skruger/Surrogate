@@ -1,0 +1,10 @@
+digraph G {edge  [ len=2 labeldistance=2 ];overlap=false;splines=true;
+nodeContact [label="{<table>contact|<cols>id (integer) [PK]\luser_id (integer)\lphone (string)\lemail (string)\laddress (string)\l}", shape=record];
+nodeUserHasProject [label="{<table>user_has_project|<cols>project_id (integer) [PK]\luser_id (integer) [PK]\l}", shape=record];
+nodeProject [label="{<table>project|<cols>id (integer) [PK]\lname (string)\l}", shape=record];
+nodeUser [label="{<table>user|<cols>id (integer) [PK]\lusername (string)\lpassword (string)\l}", shape=record];
+
+nodeContact:cols -> nodeUser:table [label="user_id=id"];
+nodeUserHasProject:cols -> nodeUser:table [label="user_id=id"];
+nodeUserHasProject:cols -> nodeProject:table [label="project_id=id"];
+}

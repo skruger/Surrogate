@@ -1,0 +1,16 @@
+graph G {edge  [ len=2 labeldistance=2 ];overlap=false;splines=true;
+nodeContact [label="{<table>Contact|<cols>phone (string)\lemail (string)\laddress (string)}", shape=record];
+nodeProject [label="{<table>Project|<cols>name (string)}", shape=record];
+nodeUser [label="{<table>User|<cols>username (string)\lpassword (string)}", shape=record];
+
+nodeUserHasProject [label="{<table>UserHasProject|<cols>}", shape=Mrecord];
+nodeProject [label="{<table>Project|<cols>}", shape=Mrecord];
+nodeUser [label="{<table>User|<cols>}", shape=Mrecord];
+
+nodeUserHasProject -- nodeUser [headlabel="0,n",label="",labeldistance=3];
+nodeUserHasProject -- nodeProject [headlabel="0,n",label="",labeldistance=3];
+nodeProject -- nodeUserHasProject [headlabel="0,1",label="",labeldistance=3];
+nodeUser -- nodeContact [headlabel="0,1",label="(Contacts)",labeldistance=3];
+nodeUser -- nodeUserHasProject [headlabel="0,1",label="",labeldistance=3];
+
+}
