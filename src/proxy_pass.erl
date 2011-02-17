@@ -174,17 +174,35 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 					end
 			end,
 			case ConnHost of
-				{host,Host,Port} ->
-					case gen_tcp:connect(Host,Port,[binary,inet,{active,false}],20000) of
-						{ok,SSock0} ->
-							{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-							gen_socket:send(SSock,RequestHeaders),
-							proxy_read_request:get_next(State#proxy_pass.request_driver),
-							{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
-						ErrConn ->
-							?ERROR_MSG("Could not Connect to backend server: ~p ~p~n",[ConnHost,ErrConn]),
-							EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
-							gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+				{host,Host0,Port} ->
+					try
+						{Host,InetVer} = 
+							case proplists:get_value(inet6,State#proxy_pass.config,false) of 
+								true ->
+									case proxylib:inet_getaddr(Host0) of
+										{ip,Addr} -> {Addr,proxylib:inet_version(Addr)};
+										Addr -> {Addr,proxylib:inet_version(Addr)}
+									end;
+								false ->
+									{Host0,inet}
+							end,
+						case gen_tcp:connect(Host,Port,[binary,InetVer,{active,false}],20000) of
+							{ok,SSock0} ->
+								{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
+								gen_socket:send(SSock,RequestHeaders),
+								proxy_read_request:get_next(State#proxy_pass.request_driver),
+								{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
+							ErrConn ->
+								?ERROR_MSG("Could not Connect to backend server: ~p ~p~n",[ConnHost,ErrConn]),
+								EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
+								gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+								{next_state,proxy_error,State}
+						end
+					catch
+						_:CErr ->
+							?ERROR_MSG("Error doing gen_tcp:connect(~p,~p): ~p (ip: ~p)~n",[Host0,Port,CErr,proxylib:inet_getaddr(Host0)]),
+							CEMsg = io_lib:format("Internal proxy error connecting to host: ~p",[CErr]),
+							gen_fsm:send_event(self(),{error,503,lists:flatten(CEMsg)}),
 							{next_state,proxy_error,State}
 					end;
 				Err ->
