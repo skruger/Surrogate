@@ -8,6 +8,8 @@ outside view and then create an "application" called backend then you would acce
 
 with php 5.2.12 or better (developed with 5.3) you should be able to
 
+mkdir cache 
+
 php ./symfony cc
 mysqladmin create surrogate_webadmin
 mysql surrogate_webadmin < surrogate_webadmin.sql

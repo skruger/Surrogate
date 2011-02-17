@@ -1,0 +1,64 @@
+User:
+  connection: _test_graphviz
+  columns:
+    id:
+      type: integer(4)
+      autoincrement: true
+      primary: true
+    username:
+      type: string(255)
+    password:
+      type: string(255)
+  relations:
+    Contacts:
+      class: Contact
+      local: id
+      foreign: user_id
+      foreignType: one
+      foreignAlias: User
+      type: many
+    Projects:
+      foreignAlias: Users
+      class: Project
+      refClass: UserHasProject
+
+Contact:
+  connection: _test_graphviz
+  columns:
+    id:
+      type: integer(4)
+      autoincrement: true
+      primary: true
+    user_id:
+      type: integer(4)
+    phone:
+      type: string(255)
+    email:
+      type: string(255)
+    address:
+      type: string(255)
+
+Project:
+  connection: _test_graphviz
+  columns:
+    id:
+      type: integer(4)
+      autoincrement: true
+      primary: true
+    name: string(255)
+
+UserHasProject:
+  connection: _test_graphviz
+  tableName: user_has_project
+  columns:
+    project_id:
+      type: integer(4)
+      primary: true
+    user_id:
+      type: integer(4)
+      primary: true
+  relations:
+    User:
+      foreignAlias: UserHasProject
+    Project:
+      foreignAlias: UserHasProject

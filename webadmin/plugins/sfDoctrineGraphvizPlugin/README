@@ -1,0 +1,53 @@
+sfDoctrineGraphvizPlugin
+========================
+
+Provides you with a task that output database MCD and MLD doctrine schema
+using the graphviz tool.
+
+Installation
+============
+
+Install the plugin via the subversion repository by executing the following
+command from the project root directory (branch 1.4 of the plugin works for
+both 1.3 and 1.4 symfony versions):
+
+    $ svn co http://svn.symfony-project.com/plugins/sfDoctrineGraphvizPlugin/branches/1.4 plugins/sfDoctrineGraphvizPlugin
+
+or by using the default symfony plugin install command:
+
+    $ ./symfony plugin:install sfDoctrineGraphvizPlugin
+
+Usage
+=====
+
+Simply type the following command:
+
+    $ ./symfony doctrine:graphviz
+
+Files are created in two directories: _doc/graph/mcd_ and _doc/graph/mld_. The
+former one stores following files:
+
+  * __mcd.schema.dot__ : source of _"Modèle conceptuel des données"_
+  * __mcd.dot.png__ : _dot_ image of _"Modèle conceptuel des données"_
+  * __mcd.neato.png__ : _neato_ image of _"Modèle conceptuel des données"_
+  * __mcd.twopi.png__ : _twopi_ image of _"Modèle conceptuel des données"_
+  * __mcd.circo.png__ : _circo_ image of _"Modèle conceptuel des données"_
+  * __mcd.fdp.png__ : _fdp_ image of _"Modèle conceptuel des données"_
+
+while the latter one stores:
+
+  * __mld.schema.dot__ : source of _"Modèle logique des données"_
+  * __mld.dot.png__ : dot image of _"Modèle logique des données"_
+  * __mld.neato.png__ : neato image of _"Modèle logique des données"_
+  * __mld.twopi.png__ : twopi image of _"Modèle logique des données"_
+  * __mld.circo.png__ : circo image of _"Modèle logique des données"_
+  * __mld.fdp.png__ : fdp image of _"Modèle logique des données"_
+
+You can simply choose between many different images to choose the one that is
+the most readabe for you.
+
+Notes
+=====
+
+You must have [GraphViz](http://www.graphviz.org/Documentation.php) installed
+on your system.

@@ -1,0 +1,190 @@
+graph G {
+	edge [ len=2 labeldistance=2 ];
+	overlap=false;
+	splines=true;
+
+	nodeListnerConfig [
+		label="{<table>ListnerConfig|<cols>enable_gzip (boolean)\lfilter_headers (string)\lfwd_proxy_auth (enum)\llb_pool (string)\llb_proxy_host (string)\llb_backend_port (int)}",
+		shape=record ];
+	nodeStreamFilter [
+		label="{<table>StreamFilter|<cols>name (string)\lmodule_value (string)\lhas_forward_mode (boolean)\lhas_reverse_mode (boolean)}",
+		shape=record ];
+	nodesfGuardForgotPassword [
+		label="{<table>sfGuardForgotPassword|<cols>unique_key (string)\lexpires_at (timestamp)\lcreated_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodesfGuardUserPermission [
+		label="{<table>sfGuardUserPermission|<cols>created_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodesfGuardPermission [
+		label="{<table>sfGuardPermission|<cols>name (string)\ldescription (string)\lcreated_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodesfGuardGroupPermission [
+		label="{<table>sfGuardGroupPermission|<cols>created_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodesfGuardRememberKey [
+		label="{<table>sfGuardRememberKey|<cols>remember_key (string)\lip_address (string)\lcreated_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodesfGuardUser [
+		label="{<table>sfGuardUser|<cols>first_name (string)\llast_name (string)\lemail_address (string)\lusername (string)\lalgorithm (string)\lsalt (string)\lpassword (string)\lis_active (boolean)\lis_super_admin (boolean)\llast_login (timestamp)\lcreated_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodesfGuardGroup [
+		label="{<table>sfGuardGroup|<cols>name (string)\ldescription (string)\lcreated_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodesfGuardUserGroup [
+		label="{<table>sfGuardUserGroup|<cols>created_at (timestamp)\lupdated_at (timestamp)}",
+		shape=record ];
+	nodeListner [
+		label="{<table>Listner|<cols>listner_type (enum)\lip_address (string)\lport (int)}",
+		shape=record ];
+	nodeVirtualService [
+		label="{<table>VirtualService|<cols>name (string)\lenabled_status (boolean)}",
+		shape=record ];
+
+	nodesfGuardGroupPermission [
+		label="{<table>sfGuardGroupPermission|<cols>created_at (timestamp)\lupdated_at (timestamp)}",
+		shape=Mrecord ];
+	nodesfGuardUserPermission [
+		label="{<table>sfGuardUserPermission|<cols>created_at (timestamp)\lupdated_at (timestamp)}",
+		shape=Mrecord ];
+	nodesfGuardUserGroup [
+		label="{<table>sfGuardUserGroup|<cols>created_at (timestamp)\lupdated_at (timestamp)}",
+		shape=Mrecord ];
+	nodeVirtualServiceListner [
+		label="{<table>VirtualServiceListner|<cols>}",
+		shape=Mrecord ];
+	nodeVirtualServiceListners [
+		label="{<table>VirtualServiceListners|<cols>}",
+		shape=Mrecord ];
+	nodeListnerConfigStreamFilters [
+		label="{<table>ListnerConfigStreamFilters|<cols>}",
+		shape=Mrecord ];
+	nodeListnerConfig [
+		label="{<table>ListnerConfig|<cols>}",
+		shape=Mrecord ];
+	nodeStreamFilter [
+		label="{<table>StreamFilter|<cols>}",
+		shape=Mrecord ];
+	nodesfGuardPermission [
+		label="{<table>sfGuardPermission|<cols>}",
+		shape=Mrecord ];
+	nodesfGuardUser [
+		label="{<table>sfGuardUser|<cols>}",
+		shape=Mrecord ];
+	nodesfGuardGroup [
+		label="{<table>sfGuardGroup|<cols>}",
+		shape=Mrecord ];
+	nodeListnerListnerConfig [
+		label="{<table>ListnerListnerConfig|<cols>}",
+		shape=Mrecord ];
+	nodeListner [
+		label="{<table>Listner|<cols>}",
+		shape=Mrecord ];
+	nodeVirtualService [
+		label="{<table>VirtualService|<cols>}",
+		shape=Mrecord ];
+
+	nodesfGuardGroupPermission -- nodesfGuardGroup [
+		headlabel="0,n",
+		label="(Group)",
+		labeldistance=3 ];
+	nodesfGuardGroupPermission -- nodesfGuardPermission [
+		headlabel="0,n",
+		label="(Permission)",
+		labeldistance=3 ];
+	nodesfGuardUserPermission -- nodesfGuardUser [
+		headlabel="0,n",
+		label="(User)",
+		labeldistance=3 ];
+	nodesfGuardUserPermission -- nodesfGuardPermission [
+		headlabel="0,n",
+		label="(Permission)",
+		labeldistance=3 ];
+	nodesfGuardUserGroup -- nodesfGuardUser [
+		headlabel="0,n",
+		label="(User)",
+		labeldistance=3 ];
+	nodesfGuardUserGroup -- nodesfGuardGroup [
+		headlabel="0,n",
+		label="(Group)",
+		labeldistance=3 ];
+	nodeVirtualServiceListners -- nodeVirtualService [
+		headlabel="0,n",
+		label="",
+		labeldistance=3 ];
+	nodeVirtualServiceListners -- nodeListner [
+		headlabel="0,n",
+		label="",
+		labeldistance=3 ];
+	nodeListnerConfigStreamFilters -- nodeListnerConfig [
+		headlabel="0,n",
+		label="",
+		labeldistance=3 ];
+	nodeListnerConfigStreamFilters -- nodeStreamFilter [
+		headlabel="0,n",
+		label="",
+		labeldistance=3 ];
+	nodeListnerConfig -- nodeListner [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodeListnerConfig -- nodeListnerConfigStreamFilters [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodeStreamFilter -- nodeListnerConfigStreamFilters [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodesfGuardPermission -- nodesfGuardGroupPermission [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodesfGuardPermission -- nodesfGuardUserPermission [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodesfGuardUser -- nodesfGuardUserPermission [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodesfGuardUser -- nodesfGuardUserGroup [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodesfGuardGroup -- nodesfGuardGroupPermission [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodesfGuardGroup -- nodesfGuardUserGroup [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodeListnerListnerConfig -- nodeListnerConfig [
+		headlabel="0,n",
+		label="",
+		labeldistance=3 ];
+	nodeListner -- nodeVirtualServiceListners [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+	nodeVirtualService -- nodeVirtualServiceListners [
+		headlabel="0,1",
+		label="",
+		labeldistance=3 ];
+
+	nodesfGuardUser -- nodesfGuardRememberKey [
+		arrowhead=normal ];
+	nodesfGuardUser -- nodesfGuardForgotPassword [
+		arrowhead=normal ];
+	nodesfGuardForgotPassword -- nodeBasesfGuardForgotPassword [
+		arrowhead=normal ];
+	nodesfGuardPermission -- nodeBasesfGuardPermission [
+		arrowhead=normal ];
+	nodesfGuardRememberKey -- nodeBasesfGuardRememberKey [
+		arrowhead=normal ];
+	nodesfGuardUser -- nodeBasesfGuardUser [
+		arrowhead=normal ];
+	nodesfGuardGroup -- nodeBasesfGuardGroup [
+		arrowhead=normal ];
+
+}
