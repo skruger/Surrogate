@@ -7,49 +7,24 @@
 % 5: DEBUG+
 {log_level, 4}.
 
-% {mysql_conn,{ Host, Port, User, Pass, Database }}.
+%{mysql_conn,{ Host, Port, User, Pass, Database }}.
 %{mysql_conn,{"localhost",3306, "surrogate", "spass", "surrogate"}}.
 
 %{auth_mode,mnesia}.
 %{auth_mode,mysql}.
 
 {listeners,[
-			{proxy_socks45,{ip,{0,0,0,0}},1080,[
-							{stream_filters,[filter_force_chunk]}
-							]},
+%			{proxy_socks45,{ip,{0,0,0,0}},1080,[
+%							{stream_filters,[filter_force_chunk]}
+%							]},
+
+%%%  Use {ip,"::"} or {ip,{0,0,0,0,0,0,0,0}} to listen IPv6 
 			{proxy_transparent,{ip,{0,0,0,0}},3128,[
 							enable_gzip,		
 							{stream_filters,[filter_auth_basic,filter_headers]},
 							{filter_headers,[{add,"X-modified-by: Surrogate"}]},
 							{proxy_auth,false}					
 							]}
-%							,
-%			{balance_http,{ip,{192,168,19,41}},8080,[
-%					{pool,pool1},
-%					%% {proxy_host,{{192,168,19,58},80}},  % useful for setting up a single reverse proxy destination.
-%					{backend_port,80},
-%					{stream_filters,[filter_headers]},
-%					{filter_headers,[xforwardfor,{add,"X-SSL: True"}]}
-%					]}
-%					,
-%			{balance_https,{ip,{192,168,19,41}},8443,
-%						"Surrogate/conf/fastinfra.key",
-%						"Surrogate/conf/fastinfra.crt",
-%						
-%				    [
-%					{pool,pool1},
-%					{backend_port,80},
-%					{stream_filters,[filter_headers]},
-%					{filter_headers,[xforwardfor,{add,"X-SSL: True"}]}
-%					]}
 			]}.
 
-
-%% Used for load balancing
-{balance_pools,[
-		{pool1,[
-				{hosts,[{{192,168,19,58},80},{{192,168,19,59},80}]},
-				{mode,roundrobin} %% round robin is default mode if none is specified
-			   ]}
-		]}.
 

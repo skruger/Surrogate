@@ -215,7 +215,7 @@ inet_getaddr(Host) ->
 		{ok,IP} ->
 			{ip,IP};
 		{error,Reason} ->
-			?DEBUG_MSG("No IPv6: ~p~n",[Reason]),
+			?DEBUG_MSG("No IPv6: ~p ~p~n",[Host,Reason]),
 			case inet:getaddr(Host,inet) of
 				{ok,IP} -> {ip,IP};
 				{error,_} -> Host

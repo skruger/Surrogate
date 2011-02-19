@@ -41,15 +41,21 @@
 start(Sock,Request) ->
 	ParentPid = self(),
 %% 	?DEBUG_MSG("~p started by: ~p~n",[?MODULE,ParentPid]),
-	case header_parse:get_headers(Sock,response) of
-		Hdr ->
-			case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body,request=Request}],[]) of
-				{ok,RPid} ->
-					gen_socket:controlling_process(Sock,RPid),
-					{?MODULE,RPid};
-				Err ->
-					Err
-			end
+	try
+		case header_parse:get_headers(Sock,response) of
+			Hdr ->
+				case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body,request=Request}],[]) of
+					{ok,RPid} ->
+						gen_socket:controlling_process(Sock,RPid),
+						{?MODULE,RPid};
+					Err ->
+						Err
+				end
+		end
+	catch
+		_:CErr ->
+			?ERROR_MSG("Error in ~p:start(): ~p~n~p~n",[?MODULE,CErr,Request]),
+			CErr
 	end.
 
 get_next({?MODULE,Pid}) ->
