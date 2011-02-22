@@ -15,7 +15,7 @@
 %% -export([send/2,setopts/2]).
 
 -export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
--export([inet_parse/1,format_inet/1,inet_version/1,inet_getaddr/1]).
+-export([inet_parse/1,format_inet/1,inet_version/1,inet_getaddr/1,inet_getaddr/2]).
 
 %% -export([re/1]).
 %%
@@ -211,15 +211,20 @@ inet_parse(IPStr) when is_list(IPStr) ->
 	end.
 
 inet_getaddr(Host) ->
+	inet_getaddr(Host,inet).
+
+inet_getaddr(Host,inet) ->
+	case inet:getaddr(Host,inet) of
+		{ok,IP} -> {ip,IP};
+		{error,_} -> Host
+	end;
+inet_getaddr(Host,inet6) ->
 	case inet:getaddr(Host,inet6) of
 		{ok,IP} ->
 			{ip,IP};
 		{error,Reason} ->
 			?DEBUG_MSG("No IPv6: ~p ~p~n",[Host,Reason]),
-			case inet:getaddr(Host,inet) of
-				{ok,IP} -> {ip,IP};
-				{error,_} -> Host
-			end
+			inet_getaddr(Host,inet)
 	end.
 
 %% method_has_data(Request,ResHdr) ->

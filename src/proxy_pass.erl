@@ -179,13 +179,17 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 						{Host,InetVer} = 
 							case proplists:get_value(inet6,State#proxy_pass.config,false) of 
 								true ->
-									case proxylib:inet_getaddr(Host0) of
+									case proxylib:inet_getaddr(Host0,inet6) of
 										{ip,Addr} -> {Addr,proxylib:inet_version(Addr)};
 										Addr -> {Addr,proxylib:inet_version(Addr)}
 									end;
 								false ->
-									{Host0,inet}
+									case proxylib:inet_getaddr(Host0,inet) of
+										{ip,Addr} -> {Addr,proxylib:inet_version(Addr)};
+										Addr -> {Addr,proxylib:inet_version(Addr)}
+									end
 							end,
+%% 						?DEBUG_MSG("Host: ~p:~p (~p)",[Host,Port,InetVer]),
 						case gen_tcp:connect(Host,Port,[binary,InetVer,{active,false}],20000) of
 							{ok,SSock0} ->
 								{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
