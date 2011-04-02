@@ -117,28 +117,22 @@ make_childspec(L) ->
 	try
 		?DEBUG_MSG("make_childspec(~p)~n",[L]),
 		case L of
-			{proxy_transparent,{ip,IP0},Port,_} = S ->
-				IP = proxylib:inet_parse(IP0),
-				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_transparent,proxylib:format_inet(IP),Port]))),
-				Spec = {Name,{proxy_transparent,start_link,[S,Name]},
-						permanent, 10000,worker,[]},
-				[Spec];
 			{proxy_socks45,{ip,IP0},Port,_} = S ->
 				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_socks45,proxylib:format_inet(IP),Port]))),
 				Spec = {Name,{proxy_socks45,start_link,[S]},
 						permanent,10000,worker,[]},
 				[Spec];
-			{Bal,{ip,IP0},Port,_} = S when Bal == balance_http ->
+			{Bal,{ip,IP0},Port,_} = S when (Bal == proxy_http) or (Bal == proxy_transparent) or (Bal == balance_http) ->
 				IP = proxylib:inet_parse(IP0),
-				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[Bal,proxylib:format_inet(IP),Port]))),
-				Spec = {Name,{balance_http,start_link,[S]},
+				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_http,proxylib:format_inet(IP),Port]))),
+				Spec = {Name,{proxy_http,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
-			{Bal,{ip,IP0},Port,_,_,_} = S when Bal == balance_https ->
+			{Bal,{ip,IP0},Port,_,_,_} = S when (Bal == proxy_https) or (Bal == balance_https) ->
 				IP = proxylib:inet_parse(IP0),
-				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[Bal,proxylib:format_inet(IP),Port]))),
-				Spec = {Name,{balance_http,start_link,[S]},
+				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_https,proxylib:format_inet(IP),Port]))),
+				Spec = {Name,{proxy_http,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
 			{rest_rpc,{ip,IP0},Port,_Opts} = S ->

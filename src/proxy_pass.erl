@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1,start/2,start_remote/2]).
+-export([start/1,start/2,start_remote/2,setproxyaddr/3]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -69,7 +69,10 @@ start_remote(Parent,Args) ->
 	erlang:send(Parent,Ret),
 %% 	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
 	ok.
-					
+		
+
+setproxyaddr(Pid,Host,Port) ->
+	gen_fsm:send_all_state_event(Pid,{setproxyaddr,{host,Host,Port}}).
 
 %% ====================================================================
 %% Server functions
@@ -100,16 +103,7 @@ proxy_start({socket,CSock},State) ->
 %% 	?DEBUG_MSG("peername: ~p~n",[gen_socket:peername(CSock)]),
 	{ok,Peer} = gen_socket:peername(CSock),
 	filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
-	{next_state,client_send_11,State#proxy_pass{client_sock=CSock}};
-proxy_start({reverse_proxy,CSock,{host,_Host,_Port}=Addr}=_L,State) ->
-%% 	?DEBUG_MSG("Starting reverse proxy for: ~p~n",[Addr]),
-	{ok,Peer} = gen_socket:peername(CSock),
-	filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
-	gen_fsm:send_event(self(),request),
-	{next_state,client_send_11,State#proxy_pass{client_sock=CSock,reverse_proxy_host=Addr}};
-proxy_start({error,_,_,_}=Err,State) ->
-	gen_fsm:send_event(self(),Err),
-	{next_state,proxy_error,State}.
+	{next_state,client_send_11,State#proxy_pass{client_sock=CSock}}.
 
 client_send_11(request,State) ->
 	try
@@ -150,7 +144,6 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 			end;
 		_ ->
 			Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
-			ReqHdr = State#proxy_pass.request,
 			Via = io_lib:format("Via: ~s ~s (Surrogate ~p)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost(),node()]),
 			Hdr0 = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization","accept-encoding"],ReqHdr#header_block.headers),
 			Hdr1 = 
@@ -197,7 +190,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 								proxy_read_request:get_next(State#proxy_pass.request_driver),
 								{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
 							ErrConn ->
-								?ERROR_MSG("Could not Connect to backend server: ~p ~p~n",[ConnHost,ErrConn]),
+								?ERROR_MSG("Could not Connect to server: ~p ~p~n",[ConnHost,ErrConn]),
 								EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
 								gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
 								{next_state,proxy_error,State}
@@ -371,7 +364,10 @@ proxy_error(Msg,State) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-handle_event(_Event, StateName, StateData) ->
+handle_event({setproxyaddr,{host,_,_}=ProxyHost}, StateName, StateData) ->
+	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
+handle_event(Event, StateName, StateData) ->
+	?INFO_MSG("~p:handle_event() received unknown event: ~p~n",[?MODULE,Event]),
 	{next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------

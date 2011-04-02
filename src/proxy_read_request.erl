@@ -99,10 +99,6 @@ send_headers(run,State) ->
 %% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
 	State#state.parent ! {request_header,State#state.headers,State#state.size},
 	case State#state.size of
-%% 		0 ->
-%% %% 			State#state.parent ! {end_request_data,0},
-%% %% 			gen_socket:controlling_process(State#state.sock,State#state.parent),
-%% 			{next_state,read_request,State};
 		Size when Size >= 0 ->
 			{next_state,read_request,State};
 		Other ->

@@ -223,7 +223,7 @@ inet_getaddr(Host,inet6) ->
 		{ok,IP} ->
 			{ip,IP};
 		{error,Reason} ->
-			?DEBUG_MSG("No IPv6: ~p ~p~n",[Host,Reason]),
+%% 			?DEBUG_MSG("No IPv6: ~p ~p~n",[Host,Reason]),
 			inet_getaddr(Host,inet)
 	end.
 

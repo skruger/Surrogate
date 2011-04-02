@@ -90,12 +90,8 @@ get_proxyconfig() ->
 %% --------------------------------------------------------------------
 init(State) ->
 	?INFO_MSG("Starting ~p.",[?MODULE]),
-	case proplists:get_value(mode,State#state.config_terms,worker) of
-		master ->
-			mnesia:create_schema([node()]);
-		_ ->
-			ok
-	end,
+	mnesia:create_schema([node()]),
+
 	case proplists:get_value(role,State#state.config_terms,worker) of
 		listener ->
 			F0 = fun() ->
@@ -107,18 +103,6 @@ init(State) ->
 						end
 				end,
 			spawn(F0);
-%% 			F1 = fun() ->
-%% 						 
-%% 						 
-%% 						Spec = {cluster_supervisor_listener,{cluster_supervisor,start_link,[listener]},permanent,5000,worker,[]},
-%% 						case supervisor:start_child(surrogate_sup,Spec) of
-%% 							{error,_} = SupErr ->
-%% 								?CRITICAL("Error starting cluster_supervisor_listener with config: ~p~nError: ~p~n",[Spec,SupErr]);
-%% 							_ -> ok
-%% 						end
-%% 				end,
-%% 			cluster_supervisor:start_cluster(listener);
-%% 			spawn(F1);
 		_ ->
 			ok
 	end,
@@ -175,9 +159,23 @@ init(State) ->
 					end,
 			spawn(FAuth)
 	end,
+	
+	case proplists:get_value(cluster,State#state.config_terms,false) of
+		false -> ok;
+		ClusterConf ->
+			ClusterLoad =
+				fun() ->
+						application:load(cluster_supervisor),
+						application:set_env(cluster_supervisor,cluster_config,ClusterConf),
+						application:start(cluster_supervisor)
+				end,
+			spawn(ClusterLoad)
+	end,
+			
+	
 	LogLevel = proplists:get_value(log_level,State#state.config_terms,5),
 	surrogate_log:log_level(LogLevel),
-    ?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),
+	?DEBUG_MSG("~p init with ~p~n",[?MODULE,State]),
 	{ok, State#state{}}.
 
 %% --------------------------------------------------------------------

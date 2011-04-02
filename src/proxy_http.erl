@@ -4,7 +4,7 @@
 %%%
 %%% Created : Nov 18, 2010
 %%% -------------------------------------------------------------------
--module(balance_http).
+-module(proxy_http).
 
 -behaviour(gen_fsm).
 %% --------------------------------------------------------------------
@@ -45,7 +45,7 @@ start_link(Args) ->
 %%          ignore                              |
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
-init({balance_http,{ip,IP0},Port,Props}=L) ->
+init({proxy_http,{ip,IP0},Port,Props}=L) ->
 	?INFO_MSG("~p HTTP listening: ~p~n",[?MODULE,L]),
 	Bind = {ip,proxylib:inet_parse(IP0)},
 	InetVer = proxylib:inet_version(Bind),
@@ -61,7 +61,7 @@ init({http,Listen,Port,Props,Parent}=_L) ->
 %% 	io:format("Got worker: ~p~n",[L]),
 	gen_fsm:send_event(self(),wait),
 	{ok,accept_http,#worker_state{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
-init({balance_https,{ip,IP0},Port,KeyFile,CertFile,Props}=L)->
+init({proxy_https,{ip,IP0},Port,KeyFile,CertFile,Props}=L)->
 	?INFO_MSG("~p HTTPS listening: ~p~n",[?MODULE,L]),
 	Bind = {ip,proxylib:inet_parse(IP0)},
 	%Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,inet,binary,{active,true},{reuseaddr,true}],
@@ -166,7 +166,7 @@ http_balance(get_headers,State) ->
 		undefined ->
 			case proplists:get_value(pool,State#worker_state.proplist,undefined) of
 				undefined ->
-					{error,enoaddr};
+					ok;
 				Pool ->
 					gen_balancer:next(Pool,#client_info{})
 			end;
@@ -175,14 +175,13 @@ http_balance(get_headers,State) ->
 	end,
 	case ProxyHost of
 		{_,_,_,_} = Addr ->
-			gen_fsm:send_event(Pid,{reverse_proxy,Sock,{host,Addr,Port}});
+			proxy_pass:setproxyaddr(Pid,Addr,Port);
 		{Addr,BPort} ->
-			gen_fsm:send_event(Pid,{reverse_proxy,Sock,{host,Addr,BPort}});
+			proxy_pass:setproxyaddr(Pid,Addr,BPort);
 		_ ->
-			?ERROR_MSG("Invalid proxyhost: ~p~n",[ProxyHost]),
-			ErrMsg = io_lib:format("Error, bad balancer config.  No hosts found.",[]),
-			gen_fsm:send_event(self(),{error,503,"Balancer Error",lists:flatten(ErrMsg)})
+			ok
 	end,
+	gen_fsm:send_event(Pid,{socket,Sock}),
 	{stop,normal,State}.
 
 %% --------------------------------------------------------------------

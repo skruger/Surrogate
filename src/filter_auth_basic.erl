@@ -21,7 +21,7 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req) ->
-	AuthRequestResponse = {request_filter_response,<<"HTTP/1.1 407 Auth required\r\nProxy-Authenticate: Basic realm=\"FastProxy2\"\r\nConnection: close\r\n\r\n">>},
+	AuthRequestResponse = {request_filter_response,<<"HTTP/1.1 407 Auth required\r\nProxy-Authenticate: Basic realm=\"Surrogate\"\r\nConnection: close\r\n\r\n">>},
 	Dict = proxylib:header2dict(ReqHdr#header_block.headers),
 	case dict:find("proxy-authorization",Dict) of
 		{ok,"Basic "++AuthStr} ->
