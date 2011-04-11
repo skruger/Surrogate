@@ -92,86 +92,9 @@ init(State) ->
 	?INFO_MSG("Starting ~p.",[?MODULE]),
 	mnesia:create_schema([node()]),
 
-	case proplists:get_value(role,State#state.config_terms,worker) of
-		listener ->
-			F0 = fun() ->
-						Spec = {worker_manager,{worker_manager,start_link,[]},permanent,5000,worker,[]},
-						case supervisor:start_child(surrogate_sup,Spec) of
-							{error,_} = SupErr ->
-								?CRITICAL("Error starting worker_manager with config: ~p~nError: ~p~n",[Spec,SupErr]);
-							_ -> ok
-						end
-				end,
-			spawn(F0);
-		_ ->
-			ok
-	end,
-			
-		  
-	case proplists:get_value(extra_db_nodes,State#state.config_terms,[]) of
-		[] ->
-			ok;
-		Nodes when is_list(Nodes) ->
-			?INFO_MSG("Adding extra_db_nodes: ~p~n",[Nodes]),
-			mnesia:change_config(extra_db_nodes,Nodes);
-		Node when is_atom(Node) ->
-			?INFO_MSG("Adding extra_db_nodes: ~p~n",[Node]),
-			mnesia:change_config(extra_db_nodes,[Node])
-	end,
-	case proplists:get_value(mysql_conn,State#state.config_terms,false) of
-		{Host, Port, User, Password, Database} = MysqlConf ->
-			F = fun() ->
-						Spec = {mysql,{mysql,start_link,[mysql, Host, Port, User, Password, Database]},
-								permanent,2000,worker,[]},
-						case supervisor:start_child(surrogate_sup,Spec) of
-							{error,_} = SupErr ->
-								?CRITICAL("Error starting mysql with config: ~p~n~p~n",[MysqlConf,SupErr]);
-							_ -> ok
-						end
-				end,
-			spawn(F);
-		Err ->
-			?CRITICAL("Invalid {mysql_conn,{Host, Port, User, Password, Database}} configuration option.~n~p~n",[Err])
-	end,
-	%% Start filters as specified in proxy.conf
-	Filters = proplists:get_value(start_filters,State#state.config_terms,[]),
-	StartFilter = fun(F1) ->
-						  Spec = F1:filter_childspec(),
-						  case supervisor:start_child(surrogate_sup,Spec) of
-							  {error,_} = FilterErr ->
-								  ?CRITICAL("Got error ~p when starting ~p with spec:~n~p~n",[FilterErr,F1,Spec]);
-							  _ -> ?DEBUG_MSG("~p started: ~p~n",[F1,Spec])
-						  end
-				  end,
-	RunFilter = fun() -> lists:foreach(StartFilter,Filters) end,
-	spawn(RunFilter),
-	case proplists:get_value(auth_mode,State#state.config_terms,false) of
-		false -> ok;
-		_ ->
-			FAuth = fun() ->
-							Spec = {proxy_auth,{proxy_auth,start_link,[]},
-									permanent,10000,worker,[]},
-							case supervisor:start_child(surrogate_sup,Spec) of
-								{error,_} = Autherr ->
-									?CRITICAL("Starting auth failed: ~p~n~p~n",[Autherr,Spec]);
-								_ -> ?DEBUG_MSG("Auth process started.~n",[])
-							end
-					end,
-			spawn(FAuth)
-	end,
-	
-	case proplists:get_value(cluster,State#state.config_terms,false) of
-		false -> ok;
-		ClusterConf ->
-			ClusterLoad =
-				fun() ->
-						application:load(cluster_supervisor),
-						application:set_env(cluster_supervisor,cluster_config,ClusterConf),
-						application:start(cluster_supervisor)
-				end,
-			spawn(ClusterLoad)
-	end,
-			
+	%% Start filters as specified in proxy.conf {filter_modules,[{module,ArgList}|_]}
+	Filters = proplists:get_value(modules,State#state.config_terms,[]),
+	spawn(proxy_mod,start_proxy_modules,[Filters]),
 	
 	LogLevel = proplists:get_value(log_level,State#state.config_terms,5),
 	surrogate_log:log_level(LogLevel),

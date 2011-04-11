@@ -4,9 +4,10 @@
 %%%
 %%% Created : Jan 3, 2011
 %%% -------------------------------------------------------------------
--module(worker_manager).
+-module(mod_worker_manager).
 
 -behaviour(gen_server).
+-behaviour(proxy_mod).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
@@ -14,13 +15,14 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/0,list_active_nodes/0]).
+-export([start_link/0,proxy_mod_start/1,proxy_mod_stop/1,list_active_nodes/0]).
 
 -export([add_pool/1,add_pool_node/2,remove_pool_node/2,remove_node/1,remove_pool/1,list_pools/0,list_pool_nodes/1,list_node_pools/1,set_pool_node_state/2,list_nodes/1]).
 
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+
 
 -record(state, {}).
 
@@ -30,6 +32,17 @@
 
 start_link() ->
 	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+
+proxy_mod_start(_) ->
+	Spec = {worker_manager,{worker_manager,start_link,[]},permanent,5000,worker,[]},
+	case supervisor:start_child(surrogate_sup,Spec) of
+		{error,_} = SupErr ->
+			?CRITICAL("Error starting worker_manager with config: ~p~nError: ~p~n",[Spec,SupErr]);
+		_ -> ok
+	end.
+
+proxy_mod_stop(_) ->
+	ok.
 
 %% ====================================================================
 %% Server functions
