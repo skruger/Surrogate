@@ -16,7 +16,7 @@
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/0,get_spec/0,pool_children/2]).
+-export([start_link/3]).
 
 %% --------------------------------------------------------------------
 %% Internal exports
@@ -38,21 +38,9 @@
 %% External functions
 %% ====================================================================
 
-start_link() ->
-	supervisor:start_link({local,?MODULE},?MODULE,[]).
-
-get_spec() ->
-	case proxyconf:get(balance_pools,[]) of
-		[] ->
-			[];
-		_ ->
-			[{balance_sup,
-			  {balance_sup,start_link,[]},
-			  permanent,
-			  10000,
-			  worker,
-			  []}]
-	end.
+start_link(Pool,BalanceMod,Conf) ->
+	SupName = list_to_atom("balance_"++atom_to_list(Pool)++"_sup"),
+	supervisor:start_link({local,SupName},?MODULE,{Pool,BalanceMod,Conf}).
 
 
 %% ====================================================================
@@ -64,20 +52,13 @@ get_spec() ->
 %%          ignore                          |
 %%          {error, Reason}
 %% --------------------------------------------------------------------
-init([]) ->
-	Pools = proxyconf:get(balance_pools,[]),
-    Children = pool_children(Pools,[]),
+init({Pool,BalanceMod,Conf}) ->
+	CName = proxylib:get_pool_process(Pool),
+	Child0 = {CName,{gen_balancer,start_link,[CName,BalanceMod,Conf]},permanent,2000,worker,[]},
+	%% TODO:  Add health check processes here 
+	Children = [Child0],
 	{ok,{{one_for_all,5,10}, Children}}.
 
-
-pool_children([],C) ->
-	C;
-pool_children([{Pool,PoolMod,PoolProps}|R],C) ->
-	CName = proxylib:get_pool_process(Pool),
-	Child = {CName,{gen_balancer,start_link,[CName,PoolMod,PoolProps]},
-			 permanent,2000,worker,[]},
-	?DEBUG_MSG("Add child: ~p~n",[Child]),
-	pool_children(R,[Child|C]).
 
 %% ====================================================================
 %% Internal functions
