@@ -2,62 +2,46 @@
 %%% Author  : skruger
 %%% Description :
 %%%
-%%% Created : Dec 25, 2010
+%%% Created : Apr 12, 2011
 %%% -------------------------------------------------------------------
--module(gen_balancer).
+-module(healthcheck).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
 -include("surrogate.hrl").
-
-
-
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/3,start/2, next/2,set_host_state/3,behaviour_info/1]).
+-export([behaviour_info/1]).
+-export([start_checks/3,monitor_parent/1,report_status/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-%% -record(state, {balancer_mod,balancer_state}).
+-record(state, {pool,host,conf,checks}).
+-record(check_state,{name,args,status}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
+
 behaviour_info(callbacks) ->
-	[{init,1}, {next,2}];
+	[{start_check,3}];
 behaviour_info(_) ->
 	undefined.
 
-start_link(Name,Mod,Args) ->
-	?DEBUG_MSG("~p ~p ~p~n",[Name,?MODULE,[Mod,Args]]),
-	case gen_server:start_link(Name,?MODULE,[Mod,Args],[]) of
-		{ok,Pid} = OK ->
-			case Name of
-				{_,Proc} when is_atom(Proc) ->
-					register(Proc,Pid);
-				_ -> 
-					?WARN_MSG("Could not register process name in gen_balancer.  Invalid name returned from proxylib:get_pool_process()~n~p~n",[Name]),
-					ok
-			end,
-			OK;
-		Err ->
-			Err
-	end.
+%%%  Health check definition.
+%%start_check(Parent,Host,Conf) ->
 
-start(Mod,Args) ->
-	gen_server:start(Mod,[Mod,Args],[]).
+start_checks(Pool,Host,Conf) ->
+	gen_server:start_link(?MODULE,{Pool,Host,Conf},[]).
 
-next(Pool,ClientInfo) ->
-	Ref = proxylib:get_pool_process(Pool),
-	gen_server:call(Ref,{get_next,ClientInfo}).
+report_status({?MODULE,Pid},Status) ->
+	gen_server:cast(Pid,{update_status,self(),Status}).
 
-set_host_state(Pool,Host,Status) ->
-	Ref = proxylib:get_pool_process(Pool),
-	gen_server:cast(Ref,{set_host_state,Host,Status}).
-
+monitor_parent({?MODULE,Pid}) ->
+	erlang:monitor(process,Pid).
 
 %% ====================================================================
 %% Server functions
@@ -71,39 +55,13 @@ set_host_state(Pool,Host,Status) ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([Mod,Args]) ->
-	?DEBUG_MSG("Starting: ~p ~p~n",[Mod,Args]),
-	Hosts = proplists:get_value(hosts,Args,[]),
-	Pool = dict:from_list([{H,unknown} || H <- Hosts]),
-	State = #gen_balancer_state{pool=Pool,active_pool=[]},
-	gen_server:cast(self(),update_active_pool),
-	case apply(Mod,init,[Args]) of
-		{ok,LState} ->
-			{ok,State#gen_balancer_state{balancer_mod=Mod,local_state=LState}};
-		{ok,LState,Timeout} ->
-			{ok,State#gen_balancer_state{balancer_mod=Mod,local_state=LState},Timeout};
-		Err ->
-			Err
-	end.
-    
-%% init_state(Args) ->
-%% 	init_state(Args,#gen_balancer_state{pool=[],active_pool=[]}).
-%% 
-%% init_state([],State) ->
-%% 	State;
-%% init_state([A|R],State) ->
-%% 	case A of
-%% 		{host,Host} ->
-%% 			Pool = [Host|(State#gen_balancer_state.pool)],
-%% 			?DEBUG_MSG("Host added: ~p~n",[Host]),
-%% 			init_state(R,State#gen_balancer_state{pool=Pool,active_pool=Pool});
-%% %% 		{hosts,HList} ->
-%% %% 			init_state(R,State#gen_balancer_state{pool=HList,active_pool=HList});
-%% 		Unk ->
-%% 			?WARN_MSG("Invalid balancer option: ~p~n",[Unk]),
-%% 			init_state(R,State)
-%% 	end.
-
+init({Pool,Host,Conf}) ->
+	Name = list_to_atom("cm_"++erlang:pid_to_list(self())),
+	register(Name,self()),
+	lists:foreach(fun(Check) ->
+						  gen_server:cast(self(),{start_check,Check})
+				  end,Conf),
+    {ok, #state{pool=Pool,host=Host,conf=Conf,checks=dict:new()}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -115,13 +73,9 @@ init([Mod,Args]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call({get_next,ClientInfo}, _From, State) ->
-	apply(State#gen_balancer_state.balancer_mod,next,[ClientInfo,State]);
-%% 	Reply = apply(State#gen_balancer_state.balancer_mod,next,[ClientInfo,State]),
-%%     {reply, Reply, State};
-handle_call(Err,_From,State) ->
-	?ERROR_MSG("Got unknown call: ~p~n",[Err]),
-	{reply,ok,State}.
+handle_call(Request, From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_cast/2
@@ -130,29 +84,43 @@ handle_call(Err,_From,State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({set_host_state,Host,Status},State) ->
-	case dict:fetch(Host,State#gen_balancer_state.pool) of
-		Status ->
-			{noreply,State}; %% Host status unchanged
-		_ ->
-			NewPool = dict:store(Host,Status,State#gen_balancer_state.pool),
-			gen_server:cast(self(),update_active_pool),
-			{noreply,State#gen_balancer_state{pool=NewPool}}
+handle_cast({start_check,{Check,Args}},State) ->
+	Owner = {?MODULE,self()},
+	try
+		case Check:start_check(Owner,State#state.host,Args) of
+			{ok,Pid} ->
+				erlang:monitor(process,Pid),
+				CheckState = #check_state{name=Check,args=Args,status=unknown},
+				{noreply,State#state{checks=dict:store(Pid,CheckState,State#state.checks)}}
+		end
+	catch
+		_:Err ->
+			?ERROR_MSG("Could not start check: ~p~n~p:start_check(~p,~p,~p)~n",[Err,Check,Owner,State#state.host,Args]),
+			{noreply,State}
 	end;
-handle_cast(update_active_pool,State) ->
-	ActivePool = get_active_hosts(dict:to_list(State#gen_balancer_state.pool),[]),
-	?DEBUG_MSG("Active pool: ~p~n",[ActivePool]),
-	{noreply,State#gen_balancer_state{active_pool=ActivePool}};
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-get_active_hosts([],Acc) ->
-	lists:reverse(Acc);
-get_active_hosts([{_H,down}|R],Acc) ->
-	get_active_hosts(R,Acc);
-get_active_hosts([{H,_}|R],Acc) ->
-	get_active_hosts(R,[H|Acc]).
-	
+handle_cast({update_status,Pid,Status},State) ->
+	CheckState0 = dict:fetch(Pid,State#state.checks),
+	CheckState = CheckState0#check_state{status=Status},
+	Checks = dict:store(Pid,CheckState,State#state.checks),
+%% 	?DEBUG_MSG("State updated: ~p ~p~n",[State#state.host,CheckState]),
+	gen_server:cast(self(),check_host_state),
+	{noreply,State#state{checks=Checks}};
+handle_cast(check_host_state,State) ->
+	IsDown = 
+		lists:any(fun(CheckState) ->
+						  CheckState#check_state.status == down
+				  end,[X || {_Pid,X} <- dict:to_list(State#state.checks)]),
+	if
+		IsDown ->
+			gen_balancer:set_host_state(State#state.pool,State#state.host,down);
+		true ->
+			gen_balancer:set_host_state(State#state.pool, State#state.host, up)
+	end,
+%% 	?DEBUG_MSG("IsDown: ~p~n~p~n",[IsDown,State]),
+	{noreply, State};
+handle_cast(Msg, State) ->
+	?DEBUG_MSG("Unknown cast: ~p~n",[Msg]),
+	{noreply, State}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
@@ -161,7 +129,10 @@ get_active_hosts([{H,_}|R],Acc) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_info(_Info, State) ->
+handle_info({'DOWN',_Ref,process,_Pid,Reason},State) ->
+	{stop,Reason,State};
+handle_info(Info, State) ->
+	?DEBUG_MSG("Unknown info: ~p~nState: ~p~n",[Info,State]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -169,7 +140,7 @@ handle_info(_Info, State) ->
 %% Description: Shutdown the server
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(Reason, State) ->
     ok.
 
 %% --------------------------------------------------------------------
@@ -177,10 +148,11 @@ terminate(_Reason, _State) ->
 %% Purpose: Convert process state when code is changed
 %% Returns: {ok, NewState}
 %% --------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
+code_change(OldVsn, State, Extra) ->
     {ok, State}.
 
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
+
 
