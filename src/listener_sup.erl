@@ -135,20 +135,6 @@ make_childspec(L) ->
 				Spec = {Name,{proxy_http,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
-			{rest_rpc,{ip,IP0},Port,_Opts} = S ->
-				IP = proxylib:inet_parse(IP0),
-				Name = list_to_atom(lists:flatten(io_lib:format("rest_rpc_~s:~p",[proxylib:format_inet(IP),Port]))),
-				Spec = {Name,{rest_rpc,start_link,[S]},
-						permanent, 2000,worker,[]},
-				[Spec];
-			{http_management_api,{ip,IP0},Port,_Proplist} = S ->
-				IP = proxylib:inet_parse(IP0),
-				?DEBUG_MSG("Processing: ~p~n",[S]),
-				BindStr = lists:flatten(io_lib:format("~s:~p",[proxylib:format_inet(IP),Port])),
-				Name = list_to_atom("management_api_"++BindStr),
-				Spec = {Name,{proxy_manager,start,[S,Name]},
-						permanent,30000,worker,[]},
-				[Spec];
 			Undef ->
 				?ERROR_MSG("Unsupported listen spec:~n~p~n",[Undef]),
 				[]
