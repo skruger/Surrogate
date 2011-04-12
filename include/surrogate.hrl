@@ -28,7 +28,7 @@
 
 -record(api_command,{module,function,description="",format=""}).
 
--record(gen_balancer_state,{balancer_mod,pool,active_pool,local_state}).
+-record(gen_balancer_state,{balancer_mod,pool,active_pool,local_state,healthcheckers}).
 -record(client_info,{remote_addr,request_header}).
 
 -define(CRITICAL(X,Y), error_logger:error_msg("CRITICAL:\n"++X,Y)).

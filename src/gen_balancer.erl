@@ -16,7 +16,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/3,start/2, next/2,set_host_state/3,behaviour_info/1]).
+-export([start_link/3,start/2, next/2,set_host_state/3,get_host_healthcheckers/1,behaviour_info/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -56,8 +56,11 @@ next(Pool,ClientInfo) ->
 
 set_host_state(Pool,Host,Status) ->
 	Ref = proxylib:get_pool_process(Pool),
-	gen_server:cast(Ref,{set_host_state,Host,Status}).
+	gen_server:cast(Ref,{set_host_state,Host,Status,self()}).
 
+get_host_healthcheckers(Pool) ->
+	Ref = proxylib:get_pool_process(Pool),
+	gen_server:call(Ref,get_host_healthcheckers).
 
 %% ====================================================================
 %% Server functions
@@ -75,7 +78,7 @@ init([Mod,Args]) ->
 	?DEBUG_MSG("Starting: ~p ~p~n",[Mod,Args]),
 	Hosts = proplists:get_value(hosts,Args,[]),
 	Pool = dict:from_list([{H,unknown} || H <- Hosts]),
-	State = #gen_balancer_state{pool=Pool,active_pool=[]},
+	State = #gen_balancer_state{pool=Pool,active_pool=[],healthcheckers=dict:new()},
 	gen_server:cast(self(),update_active_pool),
 	case apply(Mod,init,[Args]) of
 		{ok,LState} ->
@@ -86,25 +89,6 @@ init([Mod,Args]) ->
 			Err
 	end.
     
-%% init_state(Args) ->
-%% 	init_state(Args,#gen_balancer_state{pool=[],active_pool=[]}).
-%% 
-%% init_state([],State) ->
-%% 	State;
-%% init_state([A|R],State) ->
-%% 	case A of
-%% 		{host,Host} ->
-%% 			Pool = [Host|(State#gen_balancer_state.pool)],
-%% 			?DEBUG_MSG("Host added: ~p~n",[Host]),
-%% 			init_state(R,State#gen_balancer_state{pool=Pool,active_pool=Pool});
-%% %% 		{hosts,HList} ->
-%% %% 			init_state(R,State#gen_balancer_state{pool=HList,active_pool=HList});
-%% 		Unk ->
-%% 			?WARN_MSG("Invalid balancer option: ~p~n",[Unk]),
-%% 			init_state(R,State)
-%% 	end.
-
-
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
 %% Description: Handling call messages
@@ -119,6 +103,8 @@ handle_call({get_next,ClientInfo}, _From, State) ->
 	apply(State#gen_balancer_state.balancer_mod,next,[ClientInfo,State]);
 %% 	Reply = apply(State#gen_balancer_state.balancer_mod,next,[ClientInfo,State]),
 %%     {reply, Reply, State};
+handle_call(get_host_healthcheckers,_From,State) ->
+	{reply,dict:to_list(State#gen_balancer_state.healthcheckers),State};
 handle_call(Err,_From,State) ->
 	?ERROR_MSG("Got unknown call: ~p~n",[Err]),
 	{reply,ok,State}.
@@ -130,7 +116,8 @@ handle_call(Err,_From,State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({set_host_state,Host,Status},State) ->
+handle_cast({set_host_state,Host,Status,WhoUpdated},State) ->
+	gen_server:cast(self(),{update_healthcheckers,Host,WhoUpdated}),
 	case dict:fetch(Host,State#gen_balancer_state.pool) of
 		Status ->
 			{noreply,State}; %% Host status unchanged
@@ -143,6 +130,9 @@ handle_cast(update_active_pool,State) ->
 	ActivePool = get_active_hosts(dict:to_list(State#gen_balancer_state.pool),[]),
 	?DEBUG_MSG("Active pool: ~p~n",[ActivePool]),
 	{noreply,State#gen_balancer_state{active_pool=ActivePool}};
+handle_cast({update_healthcheckers,Host,Pid},State) ->
+	Checkers = dict:store(Host,Pid,State#gen_balancer_state.healthcheckers),
+	{noreply,State#gen_balancer_state{healthcheckers=Checkers}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
