@@ -11,7 +11,8 @@
 %% --------------------------------------------------------------------
 -export([
 	 start/2,
-	 stop/1
+	 stop/1,
+	 prep_stop/1
         ]).
 
 %% --------------------------------------------------------------------
@@ -97,6 +98,14 @@ start(_Type, StartArgs) ->
 		error_logger:error_msg("~p Error: ~p~n",[?MODULE,Error]),
 	    Error
     end.
+
+
+prep_stop(State) ->
+	%%proplists:get_value(modules,State#state.config_terms,[]),
+	Filters = proxyconf:get(modules,[]),
+	spawn(proxy_mod,stop_proxy_modules,[Filters]),
+	?INFO_MSG("Shutting down modules.~n",[]),
+	State.
 
 %% --------------------------------------------------------------------
 %% Func: stop/1
