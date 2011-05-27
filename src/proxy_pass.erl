@@ -87,6 +87,8 @@ setproxyaddr(Pid,Host,Port) ->
 %% init({balance,Pool}) ->
 	
 init(Args) ->
+	pg2:create(?MODULE),
+	pg2:join(?MODULE,self()),
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
 	filter_stream:process_hooks(info,{proxy_pass_config,Args#proxy_pass.config},FilterRef),
