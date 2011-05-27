@@ -115,7 +115,7 @@ handle_cast(refresh_nodes,State) ->
 								 ?DEBUG_MSG("refresh_nodes got non-matching value: ~p~n",[Bad]),
 								 false
 						 end end,
-				 worker_manager:list_pool_nodes(State#state.name)),
+				 mod_worker_manager:list_pool_nodes(State#state.name)),
 	{noreply,State#state{hostlist=NewNodes,host_count=length(NewNodes)}};
 handle_cast(_Msg, State) ->
     {noreply, State}.

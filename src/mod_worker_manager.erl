@@ -34,10 +34,10 @@ start_link() ->
 	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
 
 proxy_mod_start(_) ->
-	Spec = {worker_manager,{worker_manager,start_link,[]},permanent,5000,worker,[]},
+	Spec = {mod_worker_manager,{mod_worker_manager,start_link,[]},permanent,5000,worker,[]},
 	case supervisor:start_child(surrogate_sup,Spec) of
 		{error,_} = SupErr ->
-			?CRITICAL("Error starting worker_manager with config: ~p~nError: ~p~n",[Spec,SupErr]);
+			?CRITICAL("Error starting mod_worker_manager with config: ~p~nError: ~p~n",[Spec,SupErr]);
 		_ -> ok
 	end.
 
