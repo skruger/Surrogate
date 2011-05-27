@@ -1,5 +1,6 @@
+#Fri Apr 15 15:39:35 MDT 2011
 backend_version=R13B
-compiler/allOptions=
+compiler/allOptions=[\n{'src/filter_stream.erl',\t[]},\n{'src/filter_check.erl',\t[]},\n{'src/proxy_mod.erl',\t[]}\n]
 compiler/debug_info=true
 compiler/encrypt_debug_info=false
 compiler/export_all=false

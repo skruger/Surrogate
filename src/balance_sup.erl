@@ -53,7 +53,7 @@ start_link(Pool,BalanceMod,Conf) ->
 %%          {error, Reason}
 %% --------------------------------------------------------------------
 init({Pool,BalanceMod,Conf}) ->
-	{_,ProcName} = CName = proxylib:get_pool_process(Pool),
+	CName = proxylib:get_pool_process(Pool),
 	Child0 = {balancer,{gen_balancer,start_link,[CName,BalanceMod,Conf]},permanent,2000,worker,[]},
 	HealthChecks = lists:map(fun(H) ->
 									 {H,{healthcheck,start_checks,[Pool,H,proplists:get_value(checks,Conf,[])]},permanent,2000,worker,[]}

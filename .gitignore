@@ -1,1 +1,8 @@
 *.log
+/jadmin/JSurrogateWS/build/
+/jadmin/JSurrogateClient/dist/
+/jadmin/JSurrogateClient/build/
+/jadmin/JSurrogate/build/
+/jadmin/JSurrogate/nbproject/private/
+/jadmin/JSurrogateClient/nbproject/private/
+/jadmin/JSurrogateWS/nbproject/private/
