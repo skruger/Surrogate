@@ -96,8 +96,9 @@ init([State]) ->
 	end.
 
 send_headers(run,State) ->
-%% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
-	State#state.parent ! {request_header,State#state.headers,State#state.size},
+	HdrData = {request_header,State#state.headers,State#state.size},
+	State#state.parent ! HdrData,
+%% 	?DEBUG_MSG("Sent headers to ~p~n~p~n",[State#state.parent,HdrData]),
 	case State#state.size of
 		Size when Size >= 0 ->
 			{next_state,read_request,State};

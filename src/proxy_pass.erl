@@ -103,9 +103,14 @@ init(Args) ->
 proxy_start({socket,CSock},State) ->
 	gen_fsm:send_event(self(),request),
 %% 	?DEBUG_MSG("peername: ~p~n",[gen_socket:peername(CSock)]),
-	{ok,Peer} = gen_socket:peername(CSock),
-	filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
-	{next_state,client_send_11,State#proxy_pass{client_sock=CSock}}.
+	case gen_socket:peername(CSock) of
+		{ok,Peer} ->
+			filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
+			{next_state,client_send_11,State#proxy_pass{client_sock=CSock}};
+		Error ->
+			?ERROR_MSG("Error getting peername!  No request_peer will be set:~p~n~p~n",[Error,State]),
+			{next_state,client_send_11,State#proxy_pass{client_sock=CSock}}
+	end.
 
 client_send_11(request,State) ->
 	try
@@ -400,6 +405,7 @@ handle_sync_event(_Event, _From, StateName, StateData) ->
 % {end_response_data,ByteLength}
 handle_info({request_header,_,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Got request header in state ~p~n",[StateName]),
+%% 	?DEBUG_MSG("Processing filters: ~p~n",[StateData#proxy_pass.filters]),
 	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)

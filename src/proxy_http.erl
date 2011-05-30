@@ -61,8 +61,10 @@ init({http,Listen,Port,Props,Parent}=_L) ->
 %% 	io:format("Got worker: ~p~n",[L]),
 	gen_fsm:send_event(self(),wait),
 	{ok,accept_http,#worker_state{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
-init({proxy_https,{ip,IP0},Port,KeyFile,CertFile,Props}=L)->
+init({proxy_https,{ip,IP0},Port,Props}=L)->
 	?INFO_MSG("~p HTTPS listening: ~p~n",[?MODULE,L]),
+	KeyFile = proplists:get_value(keyfile,Props),
+	CertFile = proplists:get_value(certfile,Props),
 	Bind = {ip,proxylib:inet_parse(IP0)},
 	%Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,inet,binary,{active,true},{reuseaddr,true}],
 	Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{reuseaddr,true}],

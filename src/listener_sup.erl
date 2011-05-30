@@ -129,7 +129,7 @@ make_childspec(L) ->
 				Spec = {Name,{proxy_http,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
-			{Bal,{ip,IP0},Port,_,_,_} = S when (Bal == proxy_https) or (Bal == balance_https) ->
+			{Bal,{ip,IP0},Port,_} = S when (Bal == proxy_https) or (Bal == balance_https) ->
 				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_https,proxylib:format_inet(IP),Port]))),
 				Spec = {Name,{proxy_http,start_link,[S]},
