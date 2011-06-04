@@ -28,6 +28,7 @@ proxy_mod_start(Conf) ->
 	mnesia:create_table(cluster_listener,[{attributes,record_info(fields,cluster_listener)}]),
 	mnesia:add_table_index(cluster_listener,ip),
 	mnesia:change_table_copy_type(cluster_listener,node(),disc_copies),
+	mnesia:add_table_copy(cluster_listener,node(),disc_copies),
 	
 	application:load(cluster_supervisor),
 	application:set_env(cluster_supervisor,cluster_config,Conf),
