@@ -86,8 +86,10 @@ vip_state(State,Vip,Extra) ->
 
 stop_listener(#cluster_listener{supervisor=Sup,sup_process_name=PName}) when Sup /= undefined, is_list(PName) ->
 	lists:foreach(fun(Proc) ->
-						  supervisor:terminate_child(Sup,Proc),
-						  supervisor:delete_child(Sup,Proc) end,PName),
+						  try
+							  supervisor:terminate_child(Sup,Proc),
+							  supervisor:delete_child(Sup,Proc) 
+						  catch _:Err -> Err end end,PName),
 	ok;
 stop_listener(_L) ->
 %% 	error_logger:info_msg("Nothing to stop: ~p~n",[L]),
