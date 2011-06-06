@@ -59,7 +59,7 @@ add_listener({Type,IP,Port,Opts}) ->
 vip_state({up,_Node,_Vip},IP,_Extra) ->
 	Listeners = mnesia:dirty_index_read(cluster_listener,IP,ip),
 	error_logger:info_msg("Starting vip: ~p~n~p~n",[IP,Listeners]),
-	[stop_listener(L) || L <- Listeners],
+	Stop = [stop_listener(L) || L <- Listeners],
 	F1 = fun(LRec) ->
 				 #cluster_listener{name=_LName,ip=IP,port=Port,type=Type,options=Opts} = LRec,
 				 L1 = {Type,IP,Port,Opts},
@@ -70,7 +70,8 @@ vip_state({up,_Node,_Vip},IP,_Extra) ->
 				 mnesia:write(LRec#cluster_listener{supervisor=Sup,sup_process_name=ProcNames}),
 
 			ok end,
-	[mnesia:transaction(F1,[L]) || L <- Listeners];
+	Start = [mnesia:transaction(F1,[L]) || L <- Listeners],
+	error_logger:info_msg("Tried stopping vip ~p before starting again:~n~p~nStarted vip ~p:~n~p~n",[IP,Stop,IP,Start]);
 vip_state({down,_Node,_Vip},IP,_Extra) ->
 	Listeners = mnesia:dirty_index_read(cluster_listener,IP,ip),
 	error_logger:info_msg("Starting vip: ~p~n~p~n",[IP,Listeners]),
