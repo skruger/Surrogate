@@ -48,33 +48,59 @@ start_link(Args) ->
 init({proxy_http,{ip,IP0},Port,Props}=L) ->
 	?INFO_MSG("~p HTTP listening: ~p~n",[?MODULE,L]),
 	Bind = {ip,proxylib:inet_parse(IP0)},
-	InetVer = proxylib:inet_version(Bind),
-	case gen_tcp:listen(Port,[Bind,InetVer,binary,{active,false},{reuseaddr,true}]) of
+	Opts =
+		case proxylib:inet_version(Bind) of
+			inet ->
+				[Bind,binary,{active,false},inet];
+			inet6 ->
+				[Bind,binary,{active,false},inet6]
+		end,
+	?INFO_MSG("~p HTTP listening: ~p~ngen_tcp:listen(~p,~p)~n",[?MODULE,L,Port,Opts]),
+	case gen_tcp:listen(Port,Opts) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
 			{ok, listen_master, #socket_state{type=http,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
-			?ERROR_MSG("~p could not start with args ~p~nError: ~p~n",[?MODULE,L,Err]),
-			{stop,error}
+			error_logger:error_msg("Error on listen() ~p~n",[Err]),
+			case gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
+				{ok,Listen} ->
+					gen_fsm:send_event(self(),check_listeners),
+					{ok, listen_master, #socket_state{type=http,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
+				Err2 ->
+					?ERROR_MSG("~p could not start with args ~p~nError: ~p~n",[?MODULE,L,Err2]),
+					{stop,error}
+			end
 	end;
 init({http,Listen,Port,Props,Parent}=_L) ->
 %% 	io:format("Got worker: ~p~n",[L]),
 	gen_fsm:send_event(self(),wait),
 	{ok,accept_http,#worker_state{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
+
 init({proxy_https,{ip,IP0},Port,Props}=L)->
+	ssl:start(),
 	?INFO_MSG("~p HTTPS listening: ~p~n",[?MODULE,L]),
-	KeyFile = proplists:get_value(keyfile,Props),
-	CertFile = proplists:get_value(certfile,Props),
+ 	KeyFile = proplists:get_value(keyfile,Props),
+ 	CertFile = proplists:get_value(certfile,Props),
 	Bind = {ip,proxylib:inet_parse(IP0)},
-	%Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,inet,binary,{active,true},{reuseaddr,true}],
-	Opts = [{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{reuseaddr,true}],
-	case ssl:listen(Port,Opts) of
+	Opts = 
+		case proxylib:inet_version(Bind) of
+			inet -> [{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{depth,2}];
+			inet6 -> [inet6,{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{ssl_imp,new},{depth,2}] %% {ssl_imp, new} set for R13B04
+		end,
+	case catch ssl:listen(Port,Opts) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
 			{ok,listen_master,#socket_state{type=https,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
-			?ERROR_MSG("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err]),
-			{stop,error}
+ 			error_logger:error_msg("Error on ssl listen() ~p~n",[Err]),
+			case catch gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
+				{ok,Listen} ->
+					gen_fsm:send_event(self(),check_listeners),
+					{ok,listen_master,#socket_state{type=https,listener=Listen,num_listeners=1,listeners=[],listen_port=Port,proplist=Props}};
+				Err2 ->
+					?ERROR_MSG("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err2]),
+					{stop,Err2}
+			end
 	end;
 init({https,Listen,Port,Props,Parent}=_L) ->
 %% 	io:format("Got worker: ~p~n",[L]),
@@ -135,13 +161,19 @@ accept_http(wait,State) ->
 accept_https({wait,ListenSock},State) ->
 %% 	io:format("~p accept_https(),~p",[?MODULE,State]),
 	case ssl:transport_accept(ListenSock) of
-		{ok,Sock0} ->
-			case ssl:ssl_accept(Sock0) of
+		{ok,SSLSock} ->
+%% 			?ERROR_MSG("ssl transport accepted . ~p~n",[SSLSock]),
+			case catch ssl:ssl_accept(SSLSock) of
 				ok ->
-					{ok,Sock} = gen_socket:create(Sock0,ssl),
+%% 					?ERROR_MSG("ssl_accept completed.~n",[]),
+					{ok,Sock} = gen_socket:create(SSLSock,ssl),
 					gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
 					gen_fsm:send_event(self(),get_headers),
 					{next_state,http_balance,State#worker_state{client_sock=Sock}};
+				{'EXIT',Err} ->
+					?ERROR_MSG("Error in ssl_accept:~n~p~n",[Err]),
+					gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
+					{stop,normal,State};
 				SSLErr ->
 					?ERROR_MSG("SSL Error: ~p~n",[SSLErr]),
 					gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
@@ -153,7 +185,7 @@ accept_https({wait,ListenSock},State) ->
 			{next_state,accept,State};
 		Err ->
 			?ERROR_MSG("~p: Accept error: ~p~n",[?MODULE,Err]),
-			gen_server:cast({State#worker_state.parent_pid,self()}),
+			gen_fsm:send_event(State#worker_state.parent_pid,{child_accepted,self()}),
 			{stop,normal,State}
 	end.
 

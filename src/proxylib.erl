@@ -186,7 +186,22 @@ format_inet({ip,IP}) ->
 format_inet({_,_,_,_}=IP) ->
 	lists:flatten(io_lib:format("~p.~p.~p.~p",erlang:tuple_to_list(IP)));
 format_inet({_,_,_,_,_,_,_,_}=IP) ->
-	lists:flatten(io_lib:format("~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B",erlang:tuple_to_list(IP))).
+	collapsev6(lists:flatten(io_lib:format("~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B",erlang:tuple_to_list(IP))),[]).
+
+collapsev6([],Acc) ->
+	lists:reverse(Acc);
+collapsev6([$0,$:|R],[]) ->  % detect 0 in first group
+	collapsev62([$:|R],":");
+collapsev6([$:,$0,$:|R],Acc) ->
+	collapsev62([$:|R],":"++Acc);
+collapsev6([C|R],Acc) ->
+	collapsev6(R,[C|Acc]).
+collapsev62([$:,$0,$:|R],Acc) ->
+	collapsev62([$:|R],Acc);
+collapsev62([$:,$0],Acc) -> % detect 0 in last group
+	collapsev6([],[$:|Acc]);
+collapsev62(R,Acc) ->
+	collapsev6([],lists:reverse(R)++Acc).
 
 inet_version({ip,IP}) ->
 	inet_version(IP);
