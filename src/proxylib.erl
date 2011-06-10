@@ -175,7 +175,7 @@ method_has_data(Req,Res) ->
 				#response_rec{code=304} ->
 					false;
 				#response_rec{code=Code} when (Code < 200) and (Code > 99) ->
-					flase;
+					false;
 				_ ->
 					true
 			end
