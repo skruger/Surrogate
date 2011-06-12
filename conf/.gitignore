@@ -1,1 +1,5 @@
 fastinfra.*
+*.crt
+*.key
+*.csr
+*.pem

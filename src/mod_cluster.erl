@@ -108,11 +108,6 @@ terminate(_Reason,_State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-% mod_cluster:add_listener({proxy_http,{ip,{8193,1136,32832,2,0,0,0,256}},8087,[inet,{proxy_host,{{ip,{192,168,19,58}},80}},{proxy_filters,[filter_host]},{filter_headers,[{add,"X-modified-by: Surrogate"}]},{proxy_auth,true}]}).
-% mod_cluster:add_listener({proxy_https,{ip,{8193,1136,32832,2,0,0,0,256}},8443,[{keyfile,"Surrogate/conf/fastinfra.key"},{certfile,"Surrogate/conf/fastinfra.crt"},inet,{proxy_host,{{ip,{192,168,19,58}},80}},{proxy_filters,[filter_host]},{filter_headers,[{add,"X-modified-by: Surrogate"}]},{proxy_auth,true}]}).
-%% mod_cluster:add_listener({proxy_http,{ip,{192,168,19,199}},8087,[inet,{proxy_host,{{ip,{192,168,19,58}},80}},{proxy_filters,[filter_host]},{filter_headers,[{add,"X-modified-by: Surrogate"}]},{proxy_auth,true}]}).
-%% {stream_filters,[filter_auth_basic]},
-
 % State:
 %% {down,Node,Vip}
 %% {up,Node,Vip}

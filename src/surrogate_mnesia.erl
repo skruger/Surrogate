@@ -134,8 +134,6 @@ add_discless_node(Node) ->
 
 delete_all() ->
 	[
-	 mnesia:delete_table(filter_host_list),
-	 mnesia:delete_table(filter_url_list),
 	 mnesia:delete_table(proxy_userinfo)
 	].
 	
