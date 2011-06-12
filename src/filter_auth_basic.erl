@@ -8,7 +8,7 @@
 %%
 %% Exported Functions
 %%
--export([process_hook/3, start_instance/0]).
+-export([process_hook/4, start_instance/0]).
 
 -behaviour(filter_stream).
 
@@ -20,7 +20,7 @@
 start_instance() ->
 	{?MODULE,?MODULE}.
 
-process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req) ->
+process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,_PPC) ->
 	AuthRequestResponse = {request_filter_response,<<"HTTP/1.1 407 Auth required\r\nProxy-Authenticate: Basic realm=\"Surrogate\"\r\nConnection: close\r\n\r\n">>},
 	Dict = proxylib:header2dict(ReqHdr#header_block.headers),
 	case dict:find("proxy-authorization",Dict) of
@@ -44,7 +44,7 @@ process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req) ->
 		_NoAuth ->
 			AuthRequestResponse
 	end;
-process_hook(_,_,Data) ->
+process_hook(_,_,Data,_PPC) ->
 	Data.
 
 

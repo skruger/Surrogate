@@ -15,7 +15,7 @@
 
 -export([proxy_mod_start/1,proxy_mod_stop/1]).
 
--export([vip_state/3,listener_name/2,add_listener/1,start_vips/1]).
+-export([vip_state/3,listener_name/2,add_listener/1,delete_listener/1,start_vips/1]).
 -export([get_listeners/0,get_listener_details/1]).
 
 -record(cluster_listener,{name,ip,port,type,options,supervisor,sup_process_name}).
@@ -59,7 +59,7 @@ add_listener({Type,IP,Port,Opts}) ->
 	mnesia:transaction(F1).
 
 delete_listener(LName) ->
-	ok.
+	mnesia:transaction(fun() -> mnesia:delete({cluster_listener,LName}) end).
 
 start_link(Opts) ->
 	gen_server:start_link({local,?MODULE},?MODULE,Opts,[]).

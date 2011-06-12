@@ -51,7 +51,7 @@ init({proxy_http,{ip,IP0},Port,Props}=L) ->
 	Opts =
 		case proxylib:inet_version(Bind) of
 			inet ->
-				[Bind,binary,{active,false},inet];
+				[Bind,binary,{active,false},inet,{reuseaddr,true}];
 			inet6 ->
 				[Bind,binary,{active,false},inet6]
 		end,

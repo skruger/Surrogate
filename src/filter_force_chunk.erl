@@ -11,7 +11,7 @@
 %%
 %% Exported Functions
 %%
--export([process_hook/3, start_instance/0]).
+-export([process_hook/4, start_instance/0]).
 
 -behaviour(filter_stream).
 %%
@@ -20,13 +20,13 @@
 
 start_instance() -> {?MODULE,?MODULE}.
 
-process_hook(_,response,{response_header,_,chunked}=Data) ->
+process_hook(_,response,{response_header,_,chunked}=Data,_PPC) ->
 	Data;
-process_hook(_,response,{response_header,_,close}=Data) ->
+process_hook(_,response,{response_header,_,close}=Data,_PPC) ->
 	Data;
-process_hook(_,response,{response_header,_,0}=Header) ->
+process_hook(_,response,{response_header,_,0}=Header,_PPC) ->
 	Header;
-process_hook(_,response,{response_header,Hdr,_Length}=Header) ->
+process_hook(_,response,{response_header,Hdr,_Length}=Header,_PPC) ->
 	Dict = proxylib:header2dict(Hdr#header_block.headers),
 	case dict:find("content-length",Dict) of
 		{ok,_} ->
@@ -42,7 +42,7 @@ process_hook(_,response,{response_header,Hdr,_Length}=Header) ->
 		_ -> 
 			Header
 	end;
-process_hook(_,_Method,Data) ->
+process_hook(_,_Method,Data,_PPC) ->
 	Data.
 
 %%

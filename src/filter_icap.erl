@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_instance/0,process_hook/3]).
+-export([start_instance/0,process_hook/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -31,20 +31,20 @@ start_instance() ->
 	{ok,Pid} = gen_server:start(?MODULE,[ProxyPass],[]),
 	{?MODULE,Pid}.
 
-process_hook(_,request,{request_header,#header_block{request=#request_rec{method="CONNECT"}},_}=Data) ->
+process_hook(_,request,{request_header,#header_block{request=#request_rec{method="CONNECT"}},_}=Data,_PPC) ->
 %% 	?DEBUG_MSG("Do nothing with connect method.~n",[]),
 	Data;
-process_hook(Pid,request,{request_header,_Hdr,_Size}=HBlock) ->
+process_hook(Pid,request,{request_header,_Hdr,_Size}=HBlock,_PPC) ->
 	gen_server:call(Pid,{request_hdr,HBlock}),
 	delay;
-process_hook(Pid,request,{request_data,Data}) ->
+process_hook(Pid,request,{request_data,Data},_PPC) ->
 	gen_server:call(Pid,{request_data,Data}),
 	delay;
-process_hook(Pid,request,{end_request_data,_Size}=End) ->
+process_hook(Pid,request,{end_request_data,_Size}=End,_PPC) ->
 %% 	?DEBUG_MSG("process_hook(~p) ~p~n",[End,?MODULE]),
 	gen_server:call(Pid,End),
 	delay;
-process_hook(_Pid,_Mode,Data) ->
+process_hook(_Pid,_Mode,Data,_PPC) ->
 %% 	?DEBUG_MSG("~p:process_hook(~p,~p)~n",[?MODULE,Mode,Data]),
 	Data.
 

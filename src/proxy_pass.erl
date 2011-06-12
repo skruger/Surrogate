@@ -91,7 +91,7 @@ init(Args) ->
 	pg2:join(?MODULE,self()),
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
-	filter_stream:process_hooks(info,{proxy_pass_config,Args#proxy_pass.config},FilterRef),
+%% 	filter_stream:process_hooks(info,{proxy_pass_config,Args#proxy_pass.config},FilterRef,Args2),
     {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,gzbuff= <<>> }}.
 
 %% --------------------------------------------------------------------
@@ -105,8 +105,8 @@ proxy_start({socket,CSock},State) ->
 %% 	?DEBUG_MSG("peername: ~p~n",[gen_socket:peername(CSock)]),
 	case gen_socket:peername(CSock) of
 		{ok,Peer} ->
-			filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters),
-			{next_state,client_send_11,State#proxy_pass{client_sock=CSock}};
+%% 			filter_stream:process_hooks(request,{request_peer,Peer},State#proxy_pass.filters,State),
+			{next_state,client_send_11,State#proxy_pass{client_sock=CSock,request_peer=Peer}};
 		Error ->
 			?ERROR_MSG("Error getting peername!  No request_peer will be set:~p~n~p~n",[Error,State]),
 			{next_state,client_send_11,State#proxy_pass{client_sock=CSock}}
@@ -406,27 +406,27 @@ handle_sync_event(_Event, _From, StateName, StateData) ->
 handle_info({request_header,_,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Got request header in state ~p~n",[StateName]),
 %% 	?DEBUG_MSG("Processing filters: ~p~n",[StateData#proxy_pass.filters]),
-	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters,StateData) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({request_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {request_data,_} in state ~p~n",[StateName]),
-	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters,StateData) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({end_request_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
-	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters,StateData) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({response_header,_,_}=Dat,StateName,StateData) ->
-	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters,StateData) of
 		delay -> ok;
 		I ->
 %% 			?DEBUG_MSG("Got response header in state ~p~n~p~n",[StateName,I]),
@@ -455,14 +455,14 @@ handle_info({gzip_response_data,GzData0},StateName,State) ->
 
 handle_info({response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
-	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters,StateData) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({end_response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
-	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters) of
+	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters,StateData) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
 	end,
@@ -472,7 +472,7 @@ handle_info({filter_delay,Data},StateName,StateData) ->
 	{next_state, StateName, StateData};
 handle_info({userinfo,UInfo},StateName,State) ->
 %% 	?DEBUG_MSG("Got userinfo: ~p~n",[UInfo]),
-	filter_stream:process_hooks(request,UInfo,State#proxy_pass.filters),
+	filter_stream:process_hooks(request,UInfo,State#proxy_pass.filters,State),
 	{next_state,StateName,State#proxy_pass{userinfo=UInfo}};
 handle_info({request_filter_response,_}=CErr,StateName,State) ->
 	gen_fsm:send_event(self(),CErr),

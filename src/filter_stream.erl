@@ -12,14 +12,14 @@
 %%
 %% Exported Functions
 %%
--export([process_hooks/3, init_filter_list/1, behaviour_info/1]).
+-export([process_hooks/4, init_filter_list/1, behaviour_info/1]).
 
 %%
 %% API Functions
 %%
 
 behaviour_info(callbacks) ->
-	[{start_instance,0},{process_hook,3}];
+	[{start_instance,0},{process_hook,4}];
 behaviour_info(_) ->
 	undefined.
 
@@ -58,18 +58,18 @@ init_filter_list([F|R],Acc) ->
 %% ByteLength = int()
 %% if delay is returned proxy_pass must receive the data as {filer_delay,Data}
 
-process_hooks(Hook,Data,Filters) ->
+process_hooks(Hook,Data,Filters,ProxyPassRecord) ->
 %% 	?DEBUG_MSG("Process hooks: ~p~n",[Filters]),
-	process_hooks(Hook,Data,Filters,Data).
+	process_hooks(Hook,Data,Filters,Data,ProxyPassRecord).
 
-process_hooks(_,Data,[],_) ->
+process_hooks(_,Data,[],_,_) ->
 	Data;
-process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData) ->
+process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData,ProxyPassRecord) ->
 %% 	?DEBUG_MSG("Process hook: ~p~n",[F]),
 	case 
 		try
 %% 			?DEBUG_MSG("Processing hook: ~p~n",[F]),
-			FMod:process_hook(FPid,Hook,Data)
+			FMod:process_hook(FPid,Hook,Data,ProxyPassRecord)
 		catch
 			_:Error ->
 				?ERROR_MSG("Error processing hook ~p: ~p~n",[F,Error]),
@@ -78,7 +78,7 @@ process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData) ->
 		error ->
 			% alternative to error is stopping all processing and returning OrigData
 			?DEBUG_MSG("Error? ~p~n",[FMod]),
-			process_hooks(Hook,Data,R,OrigData);
+			process_hooks(Hook,Data,R,OrigData,ProxyPassRecord);
 		delay -> delay;
 		RetData ->
 %% 			?DEBUG_MSG("~p Got RetData: ~p~n",[FMod,RetData]),
@@ -88,7 +88,7 @@ process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData) ->
 %% 				_ ->
 %% 					?DEBUG_MSG("~p Got RetData: ~p~n",[FMod,RetData])
 %% 			end,
-			process_hooks(Hook,RetData,R,OrigData)
+			process_hooks(Hook,RetData,R,OrigData,ProxyPassRecord)
 	end.
 
 %%
