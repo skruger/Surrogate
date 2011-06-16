@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1,start/2,start_remote/2,setproxyaddr/3]).
+-export([start/1,start/2,start_remote/2,setproxyaddr/3,addproxyaddr/3]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -70,9 +70,13 @@ start_remote(Parent,Args) ->
 %% 	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
 	ok.
 		
-
+%% Clears and replaces the proxy address list
 setproxyaddr(Pid,Host,Port) ->
 	gen_fsm:send_all_state_event(Pid,{setproxyaddr,{host,Host,Port}}).
+
+%% Appends to the proxy address list
+addproxyaddr(Pid,Host,Port) ->
+	gen_fsm:send_all_state_event(Pid,{addproxyaddr,{host,Host,Port}}).
 
 %% ====================================================================
 %% Server functions
@@ -92,7 +96,7 @@ init(Args) ->
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
 %% 	filter_stream:process_hooks(info,{proxy_pass_config,Args#proxy_pass.config},FilterRef,Args2),
-    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,gzbuff= <<>> }}.
+    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,gzbuff= <<>> ,proxy_pass_pid=self(),reverse_proxy_host=[]}}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -150,7 +154,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 					{next_state,proxy_error,State}
 			end;
 		_ ->
-			Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
+%% 			Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
 			Via = io_lib:format("Via: ~s ~s (Surrogate ~p)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost(),node()]),
 			Hdr0 = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization","accept-encoding"],ReqHdr#header_block.headers),
 			Hdr1 = 
@@ -163,56 +167,13 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 			Req=ReqHdr#header_block.request,
 			ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
 			RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)]),
-			ConnHost = 
-			case State#proxy_pass.reverse_proxy_host of
-				{host,_Host,_Port} = H -> H;
-				_ ->
-					case dict:find("host",Dict) of
-						{ok,HostStr} ->
-							proxylib:parse_host(HostStr,80);
-						EHost -> EHost
-					end
-			end,
-			case ConnHost of
-				{host,Host0,Port} ->
-					try
-						{Host,InetVer} = 
-							case proplists:get_value(inet6,State#proxy_pass.config,false) of 
-								true ->
-									case proxylib:inet_getaddr(Host0,inet6) of
-										{ip,Addr} -> {Addr,proxylib:inet_version(Addr)};
-										Addr -> {Addr,proxylib:inet_version(Addr)}
-									end;
-								false ->
-									case proxylib:inet_getaddr(Host0,inet) of
-										{ip,Addr} -> {Addr,proxylib:inet_version(Addr)};
-										Addr -> {Addr,proxylib:inet_version(Addr)}
-									end
-							end,
-%% 						?DEBUG_MSG("Host: ~p:~p (~p)",[Host,Port,InetVer]),
-						case gen_tcp:connect(Host,Port,[binary,InetVer,{active,false}],20000) of
-							{ok,SSock0} ->
-								{ok,SSock} = gen_socket:create(SSock0,gen_tcp),
-								gen_socket:send(SSock,RequestHeaders),
-								proxy_read_request:get_next(State#proxy_pass.request_driver),
-								{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
-							ErrConn ->
-								?ERROR_MSG("Could not Connect to server: ~p ~p~n",[ConnHost,ErrConn]),
-								EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
-								gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
-								{next_state,proxy_error,State}
-						end
-					catch
-						_:CErr ->
-							?ERROR_MSG("Error doing gen_tcp:connect(~p,~p): ~p (ip: ~p)~n",[Host0,Port,CErr,proxylib:inet_getaddr(Host0)]),
-							CEMsg = io_lib:format("Internal proxy error connecting to host: ~p",[CErr]),
-							gen_fsm:send_event(self(),{error,503,lists:flatten(CEMsg)}),
-							{next_state,proxy_error,State}
-					end;
-				Err ->
-					?ERROR_MSG("Could not determine backend server: ~p~n",[Err]),
-					EMsg = io_lib:format("Internal proxy error: ~p",[Err]),
-					gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+			case tcp_connect(State#proxy_pass.reverse_proxy_host,State) of
+				{ok,SSock} ->
+					gen_socket:send(SSock,RequestHeaders),
+					proxy_read_request:get_next(State#proxy_pass.request_driver),
+					{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
+				{error,ErrMsg} ->
+					gen_fsm:send_event(self(),{error,503,lists:flatten(ErrMsg)}),
 					{next_state,proxy_error,State}
 			end
 	end;
@@ -371,8 +332,13 @@ proxy_error(Msg,State) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-handle_event({setproxyaddr,{host,_,_}=ProxyHost}, StateName, StateData) ->
+handle_event({setproxyaddr,{host,Host,Port}}, StateName, StateData) ->
+	ProxyHost = [{host,IP,Port} || IP <- resolve_addr(Host,StateData)],
 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
+handle_event({addproxyaddr,{host,Host,Port}}, StateName,StateData) ->
+	ExistingHosts = StateData#proxy_pass.reverse_proxy_host,
+	ProxyHost = [{host,IP,Port} || IP <- resolve_addr(Host,StateData)],
+	{next_state,StateName,StateData#proxy_pass{reverse_proxy_host=ExistingHosts++ProxyHost}};
 handle_event(Event, StateName, StateData) ->
 	?INFO_MSG("~p:handle_event() received unknown event: ~p~n",[?MODULE,Event]),
 	{next_state, StateName, StateData}.
@@ -504,3 +470,61 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
+resolve_addr({ip,Addr},PPC) ->
+%% 	?ERROR_MSG("Strip {ip,_}~n",[]),
+	resolve_addr(Addr,PPC);
+resolve_addr({_,_,_,_}=Addr,_PPC) ->
+	[Addr];
+resolve_addr({_,_,_,_,_,_,_,_}=Addr,_PPC) ->
+	[Addr];
+resolve_addr(HostStr,PPC) ->
+	case proplists:get_value(inet6,PPC#proxy_pass.config,false) of
+		true ->
+			case proxylib:inet_getaddr(HostStr,inet6) of
+				{ip,{_,_,_,_,_,_,_,_}=Addr6} ->
+					case proxylib:inet_getaddr(HostStr,inet) of
+						{ip,Addr4} ->
+							[Addr6,Addr4];
+						_ ->
+							[Addr6]
+					end;
+				{ip,Addr4} ->
+					[Addr4];
+				Noaddr -> 
+					[{error,enohost,Noaddr}]
+			end;
+		false ->
+			case proxylib:inet_getaddr(HostStr,inet) of
+				{ip,Addr4} ->
+					[Addr4];
+				Noaddr ->
+					[{error,enohost,Noaddr}]
+			end
+	end.
+
+tcp_connect([{host,{error,Err,Host},_Port}],_PPC) ->
+	EMsg = io_lib:format("Internal proxy error: ~p connecting to ~p",[Err,Host]),
+	{error,EMsg};
+tcp_connect([{host,{error,Err,Host},_Port}|R],PPC) ->
+	?DEBUG_MSG("Error ~p connecting to host ~p~n",[Err,Host]),
+	tcp_connect(R,PPC);
+tcp_connect([{host,Host,Port}|R],PPC) ->
+	InetVer = proxylib:inet_version(Host),
+	Timeout = 
+	case R of
+		[] -> 30000;
+		_ -> 3000
+	end,
+	case gen_tcp:connect(Host,Port,[binary,InetVer,{active,false}],Timeout) of
+		{ok,SSock0} ->
+			gen_socket:create(SSock0,gen_tcp);
+		ErrConn when R == [] ->
+			?ERROR_MSG("Could not Connect to server: ~p ~p~n",[PPC#proxy_pass.reverse_proxy_host,ErrConn]),
+			EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
+			{error,EMsg};
+		_Err ->
+%% 			?DEBUG_MSG("tcp_connect error: ~p ~p~nContinuing with next host in list.~n",[Host,Err]),
+			tcp_connect(R,PPC)
+	end.
+
+	
