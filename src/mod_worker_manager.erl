@@ -15,144 +15,92 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/0,proxy_mod_start/1,proxy_mod_stop/1,list_active_nodes/0]).
+-export([start_link/1,proxy_mod_start/1,proxy_mod_stop/1]).
 
--export([add_pool/1,add_pool_node/2,remove_pool_node/2,remove_node/1,remove_pool/1,list_pools/0,list_pool_nodes/1,list_node_pools/1,set_pool_node_state/2,list_nodes/1]).
+-export([add_pool/1,remove_pool/1,list_pools/0,get_name/1,register_node/2,next_worker/1]).
 
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 
--record(state, {}).
+%% -record(state, {pool,nodes}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
 
-start_link() ->
-	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+start_link(PoolName) ->
+	global:trans({?MODULE,self()},
+				 fun() ->
+						 PName = get_name(PoolName),
+						 case global:whereis_name(PName) of
+							 undefined ->
+								 ?WARN_MSG("~p not running.  Starting pool ~p.",[?MODULE,PoolName]),
+								 gen_server:start_link({global,PName},?MODULE,PoolName,[]);
+							 Pid ->
+								 erlang:link(Pid),
+								 ?WARN_MSG("~p already running for pool ~p.",[?MODULE,PoolName]),
+								 {ok,Pid}
+						 end end).
 
 proxy_mod_start(_) ->
-	Spec = {mod_worker_manager,{mod_worker_manager,start_link,[]},permanent,5000,worker,[]},
-	case supervisor:start_child(surrogate_sup,Spec) of
-		{error,_} = SupErr ->
-			?CRITICAL("Error starting mod_worker_manager with config: ~p~nError: ~p~n",[Spec,SupErr]);
-		_ -> ok
-	end.
+	mnesia:create_table(worker_pool,[{attributes,record_info(fields,worker_pool)}]),
+	mnesia:change_table_copy_type(worker_pool,node(),disc_copies),
+	SpecList =
+		[{get_name(PoolName),{?MODULE,start_link,[PoolName]},
+		  permanent,5000,worker,[]} || PoolName <- list_pools() ],
+%% 	Spec = {mod_worker_manager,{mod_worker_manager,start_link,[]},permanent,5000,worker,[]},
+	lists:foreach(fun(Spec) ->
+						  case supervisor:start_child(surrogate_sup,Spec) of
+							  {error,_} = SupErr ->
+								  ?CRITICAL("Error starting mod_worker_manager with config: ~p~nError: ~p~n",[Spec,SupErr]);
+							  _ -> ok
+						  end end,SpecList),
+	ok.
 
 proxy_mod_stop(_) ->
+	
 	ok.
 
 %% ====================================================================
 %% Server functions
 %% ====================================================================
 
+get_name(Pool) ->
+	list_to_atom("worker_pool_"++atom_to_list(Pool)).
+
 add_pool(Pool) ->
 	F = fun() ->
 				case mnesia:read(worker_pool,Pool) of
 					[] ->
 						?INFO_MSG("Adding pool: ~p~n",[Pool]),
-						mnesia:write(#worker_pool{pool=Pool,active=true});
+						mnesia:write(#worker_pool{pool=Pool,nodes=[]});
 					_ ->
 						ok
 				end
 		end,
 	mnesia:transaction(F).
 
-add_pool_node(Pool,Node) ->
-	try
-		case net_adm:ping(Node) of
-			pong ->
-				ok;
-			pang ->
-				throw(pang)
-		end,
-		F = fun() ->
-					case mnesia:read(worker_pool,Pool) of
-						[] ->
-							mnesia:abort(nopool);
-						_ ->
-							ok
-					end,
-					case mnesia:read(worker_node,Node) of
-						[] ->
-							?INFO_MSG("Adding node: ~p~n",[Node]),
-							mnesia:write(#worker_node{node=Node,active=true});
-						_ ->
-							ok
-					end,
-					case mnesia:read(worker_node_pool,{Pool,Node}) of
-						[] ->
-							worker_pool:refresh_nodes(Pool),
-							mnesia:write(#worker_node_pool{pool_node={Pool,Node},active=true});
-						_ ->
-							ok
-					end
-			end,
-		mnesia:transaction(F)
-	catch
-		_:OErr ->
-			{error,OErr}
-	end.
-
-remove_pool_node(Pool,Node) ->
-	F = fun() ->
-				worker_pool:refresh_nodes(Pool),
-				mnesia:delete({worker_node_pool,{Pool,Node}})
-		end,
-	mnesia:transaction(F).
-
-remove_node(Node) ->
-	F = fun() ->
-				mnesia:delete({worker_node,Node})
-		end,
-	case list_node_pools(Node) of
-		[] ->
-			mnesia:transaction(F);
-		Err ->
-			{error,Err}
-	end.
-
 remove_pool(Pool) ->
 	F = fun() -> mnesia:delete({worker_pool,Pool}) end,
-	case list_pool_nodes(Pool) of
-		[] ->
-			mnesia:transaction(F);
-		Err ->
-			{error,Err}
-	end.
-
-list_pool_nodes(Pool) ->
-	F = fun() ->
-				Match = #worker_node_pool{pool_node={Pool,'$1'},_='_'},
-				mnesia:select(worker_node_pool,[{Match,[],['$1']}])
-		end,
-	case mnesia:transaction(F) of
-		{atomic,R} -> R;
-		{aborted,Err} -> {error,Err}
-	end.
-
-list_node_pools(Node) ->
-	F = fun() ->
-				Match = #worker_node_pool{pool_node={'$1',Node},_='_'},
-				mnesia:select(worker_node_pool,[{Match,[],['$1']}])
-		end,
-	case mnesia:transaction(F) of
-		{atomic,R} -> R;
-		{aborted,Err} -> {error,Err}
-	end.
-
-			
+	mnesia:transaction(F).
+	
 list_pools() ->
 	F = fun() ->
-				Match = #worker_pool{active=true,pool='$1',_='_'},
+				Match = #worker_pool{pool='$1',_='_'},
 				mnesia:select(worker_pool,[{Match,[],['$1']}])
 		end,
 	case mnesia:transaction(F) of
 		{atomic,R} -> R;
 		{aborted,Err} -> {error,Err}
 	end.
+
+register_node(Pool,Node) ->
+	gen_server:call({global,get_name(Pool)},{register_node,Node}).
+
+next_worker(Pool) ->
+	gen_server:call({global,get_name(Pool)},{next_worker}).
 
 %% --------------------------------------------------------------------
 %% Function: init/1
@@ -162,30 +110,20 @@ list_pools() ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([]) ->
-	mnesia:create_table(worker_pool,[{attributes,record_info(fields,worker_pool)}]),
-	mnesia:create_table(worker_node,[{attributes,record_info(fields,worker_node)}]),
-	mnesia:create_table(worker_node_pool,[{attributes,record_info(fields,worker_node_pool)}]),
-	mnesia:change_table_copy_type(worker_pool,node(),disc_copies),
-	mnesia:change_table_copy_type(worker_node,node(),disc_copies),
-	mnesia:change_table_copy_type(worker_node_pool,node(),disc_copies),
-	check_nodes(),
-	erlang:send_after(10000,self(),check_workers),
-	UpdatePool = fun(Pool) -> 
-						 PName = worker_pool:processname(Pool),
-						 
-						 supervisor:delete_child(surrogate_sup,PName),
-						 R =
-						 supervisor:start_child(surrogate_sup,
-												{PName,{worker_pool,start_pool,[Pool,roundrobin]},
-												 permanent,5000,worker,[]}),
-						 ?DEBUG_MSG("Trying to start: ~p -> ~p~n",[PName,R]),
-						 ok
-				 end,
-	lists:foreach(fun(Pool2) ->
-						  spawn(fun() -> UpdatePool(Pool2) end)
-				  end,list_pools()),
-	{ok, #state{}}.
+init(PoolName) ->
+	self() ! check_workers,
+	F1 = fun() ->
+				 [P|_] = mnesia:read(worker_pool,PoolName),
+				 P
+		 end,
+	case mnesia:transaction(F1) of
+		{atomic,State0} ->
+			State = State0#worker_pool{idx=0},
+			mnesia:transaction(fun() -> mnesia:write(State) end),
+			{ok,State};
+		Err ->
+			{error,Err}
+	end.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -197,6 +135,22 @@ init([]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_call({register_node,Node},_From,State) ->
+%% 	?ERROR_MSG("Registering node with ~p: ~p~n",[?MODULE,Node]),
+	case lists:any(fun(E) -> E == Node end,State#worker_pool.nodes) of
+		true ->
+			{reply,ok,State};
+		_ ->
+			Rec = State#worker_pool{nodes = [Node|State#worker_pool.nodes]},
+			mnesia:transaction(fun() -> mnesia:write(Rec) end),
+			{reply,ok,Rec}
+	end;
+handle_call({next_worker},_From,State) when State#worker_pool.nodes == [] ->
+	{reply,{error,noworkers},State};
+handle_call({next_worker},_From,#worker_pool{nodes=Nodes,idx=Idx}=State) ->
+	NewIdx = (Idx rem length(Nodes)) +1,
+	Node = lists:nth(NewIdx,Nodes),
+	{reply,{ok,Node},State#worker_pool{idx=NewIdx}};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -208,6 +162,24 @@ handle_call(_Request, _From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_cast({check_workers,[]},State) ->
+%% 	?ERROR_MSG("Done checking workers...~p~n",[State#worker_pool.nodes]),
+	erlang:send_after(5000,self(),check_workers),
+	{noreply,State};
+handle_cast({check_workers,[Node|R]},State) ->
+	gen_server:cast(self(),{check_workers,R}),
+%% 	?WARN_MSG("Checking worker ~p~n",[Node]),
+	Worker = {mod_worker:get_name(State#worker_pool.pool),Node},
+	case catch gen_server:call(Worker,ping,1000) of
+		pong ->
+			{noreply, State};
+		_ ->
+			?WARN_MSG("Removing worker ~p from pool ~p.",[Node,State#worker_pool.pool]),
+			Rec = State#worker_pool{nodes=lists:filter(fun(N) -> N /= Node end,State#worker_pool.nodes)},
+			mnesia:transaction(fun() -> mnesia:write(Rec) end),
+			{noreply,Rec}
+	end;
+	
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -219,12 +191,12 @@ handle_cast(_Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(check_workers,State) ->
-	erlang:send_after(10000,self(),check_workers),
-	check_nodes(),
+%% 	?ERROR_MSG("State: ~p~n",[State]),
+	gen_server:cast(self(),{check_workers,State#worker_pool.nodes}),
 	{noreply,State};
-handle_info({nodedown,Node},State) ->
+handle_info({nodedown,Node},State) ->  %% Received after monitor_node()
 	?WARN_MSG("Received nodedown: ~p~n",[Node]),
-	check_nodes(),
+	
 	{noreply,State};
 handle_info(Info, State) ->
 	?DEBUG_MSG("Got unexpected info: ~p~n",[Info]),
@@ -250,81 +222,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
-list_active_nodes() ->
-	F = fun() ->
-				Match = #worker_node{active=true,node='$1',_='_'},
-				mnesia:select(worker_node,[{Match,[],['$1']}])
-		end,
-	mnesia:transaction(F).
-
-check_nodes() ->
-	lists:foreach(fun(X) ->
-						  case net_adm:ping(X#worker_node.node) of
-							  pong ->
-								  gen_server:cast(self(),{monitor_node,X}),
-								  case lists:member(X#worker_node.node,mnesia:system_info(running_db_nodes)) of
-									  true ->
-										  enable_node(X);
-									  false ->
-										  ?INFO_MSG("Node ~p is alive, but mnesia is not functioning properly.~nStart mnesia on the node and run: ~nmnesia:change_config(extra_db_nodes,['~p']). to repair.~n",
-													[X#worker_node.node,node()]),
-										  disable_node(X)
-								  end;
-							  pang ->
-								  disable_node(X)
-						  end
-				  end,
-				  list_nodes('_')).
-
-list_nodes(Active) ->
-	F = fun() ->
-				Match = #worker_node{active=Active,node='$1',_='_'},
-				lists:map(fun(K) ->
-								  [R1|_] = mnesia:read(worker_node,K),R1
-						  end,mnesia:select(worker_node,[{Match,[],['$1']}]))
-		end,
-	case mnesia:transaction(F) of
-		{atomic,R} -> R;
-		{aborted,Err} -> {error,Err}
-	end.
-
-enable_node(X) ->
-	if X#worker_node.active ->
-		ok;
-		true ->
-			?INFO_MSG("Activating previously inactive node: ~p~n",[X#worker_node.node]),
-			erlang:monitor_node(X#worker_node.node,true),
-			set_pool_node_state(X#worker_node.node,true),
-			lists:foreach(fun(P) -> worker_pool:refresh_nodes(P) end,
-						  list_node_pools(X#worker_node.node)),
-			mnesia:transaction(fun(N) ->
-									   mnesia:write(N)
-							   end,[X#worker_node{active=true}])
-	end.
-
-disable_node(X) ->
-	if X#worker_node.active ->
-			?INFO_MSG("Deactivating previously active node: ~p~n",[X#worker_node.node]),
-			set_pool_node_state(X#worker_node.node,false),
-			lists:foreach(fun(P) -> worker_pool:refresh_nodes(P) end,
-						  list_node_pools(X#worker_node.node)),
-			mnesia:transaction(fun(N) ->
-									   mnesia:write(N)
-							   end,[X#worker_node{active=false}]);
-		true ->
-			ok
-	end.
-
-set_pool_node_state(Node,Active) ->
-	Pools = list_node_pools(Node),
-%% 	?DEBUG_MSG("set_pool_node_state(~p,~p)~nPools: ~p~n",[Node,Active,Pools]),
-	F = fun() ->
-				lists:foreach(fun(Pool) ->
-									  [Rec|_] = mnesia:read(worker_node_pool,{Pool,Node}),
-									  Rec1 = Rec#worker_node_pool{active=Active},
-									  mnesia:write(Rec1)
-							  end,Pools)
-		end,
-	mnesia:transaction(F).
-									  
-	

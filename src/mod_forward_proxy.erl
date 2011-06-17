@@ -57,28 +57,6 @@ process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
 		{ok,HostStr} ->
 			{host,Host,Port} = proxylib:parse_host(HostStr,80),
 			proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,Host,Port);
-%% 			case proplists:get_value(inet6,PPC#proxy_pass.config,false) of
-%% 				true ->
-%% 					case proxylib:inet_getaddr(Host,inet6) of
-%% 						{ip,{_,_,_,_,_,_,_,_}=Addr} ->
-%% 							proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,Addr,Port),
-%% 							case proxylib:inet_getaddr(Host,inet) of
-%% 								{ip,Addrv4} ->
-%% 									proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,Addrv4,Port);
-%% 								_ -> ok
-%% 							end;
-%% 						{ip,Addrv4} ->
-%% 							proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,Addrv4,Port);
-%% 						Err -> 
-%% 							?ERROR_MSG("Got invalid response back in ~p: ~p~n",[?MODULE,Err]),ok
-%% 					end;
-%% 				false ->
-%% 					case proxylib:inet_getaddr(Host,inet) of
-%% 						{ip,Addrv4} -> 
-%% 							proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,Addrv4,Port);
-%% 						_ -> ok
-%% 					end
-%% 			end;
 		_ -> ok
 	end,
 	HBlock;

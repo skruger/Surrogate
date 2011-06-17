@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1,start/2,start_remote/2,setproxyaddr/3,addproxyaddr/3]).
+-export([start/1,start/2,start_remote/2,setproxyaddr/3,addproxyaddr/3,setproxypool/4]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -38,7 +38,12 @@ start(Args) ->
 		'NONE' ->
 			do_start(Args);
 		WorkerPool ->
-			start(worker_pool:next(WorkerPool),Args)
+			case catch mod_worker_manager:next_worker(WorkerPool) of
+				{ok,Worker} ->
+					start(Worker,Args);
+				_ ->
+					do_start(Args)
+			end
 	end.
 
 start(Node,Args) when Node == node() ->
@@ -69,7 +74,11 @@ start_remote(Parent,Args) ->
 	erlang:send(Parent,Ret),
 %% 	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
 	ok.
-		
+
+%% Set proxy address to LB pool.
+setproxypool(Pid,Pool,Port,Retries) ->
+	gen_fsm:send_all_state_event(Pid,{setproxypool,{pool,Pool,Port,Retries}}).
+
 %% Clears and replaces the proxy address list
 setproxyaddr(Pid,Host,Port) ->
 	gen_fsm:send_all_state_event(Pid,{setproxyaddr,{host,Host,Port}}).
@@ -332,6 +341,8 @@ proxy_error(Msg,State) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
+handle_event({setproxypool,{pool,_Pool,_Port,_Retries}=PoolDef}, StateName, StateData) ->
+	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=[PoolDef]}};
 handle_event({setproxyaddr,{host,Host,Port}}, StateName, StateData) ->
 	ProxyHost = [{host,IP,Port} || IP <- resolve_addr(Host,StateData)],
 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
@@ -502,6 +513,19 @@ resolve_addr(HostStr,PPC) ->
 			end
 	end.
 
+tcp_connect([],_PPC) ->
+	{error,"No servers to connect to."};
+tcp_connect([{pool,_Pool,_Port,0}|R],PPC) ->
+	tcp_connect(R,PPC);
+tcp_connect([{pool,Pool,Port,Retries}|R],PPC) ->
+%% 	?ERROR_MSG("Getting host from pool ~p with ~p retries.~n",[Pool,Retries]),
+	case gen_balancer:next(Pool,#client_info{}) of
+		{_,_,_,_} = Addr ->
+			tcp_connect([{host,Addr,Port},{pool,Pool,Port,Retries-1}|R],PPC);
+		{Addr,Port2} ->
+			tcp_connect([{host,Addr,Port2},{pool,Pool,Port,Retries-1}|R],PPC);
+		_ -> tcp_connect(R,PPC)
+	end;
 tcp_connect([{host,{error,Err,Host},_Port}],_PPC) ->
 	EMsg = io_lib:format("Internal proxy error: ~p connecting to ~p",[Err,Host]),
 	{error,EMsg};

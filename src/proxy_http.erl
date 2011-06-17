@@ -195,19 +195,15 @@ http_balance(get_headers,State) ->
 	{ok,Pid} = proxy_pass:start(ProxyPass),
 	gen_socket:controlling_process(Sock,Pid),
 	Port = proplists:get_value(backend_port,State#worker_state.proplist,State#worker_state.listen_port),
-	ProxyHost = 
 	case proplists:get_value(proxy_host,State#worker_state.proplist,undefined) of
 		undefined ->
 			case proplists:get_value(pool,State#worker_state.proplist,undefined) of
 				undefined ->
 					ok;
 				Pool ->
-					gen_balancer:next(Pool,#client_info{})
+					Retries = proplists:get_value(pool_retries,State#worker_state.proplist,3),
+					proxy_pass:setproxypool(Pid, Pool, Port, Retries)
 			end;
-		R ->
-			R
-	end,
-	case ProxyHost of
 		{_,_,_,_} = Addr ->
 			proxy_pass:setproxyaddr(Pid,Addr,Port);
 		{Addr,BPort} ->

@@ -21,9 +21,9 @@
 
 -record(proxy_userinfo,{username,password,extra_info}).
 
--record(worker_node,{node,active}).
--record(worker_pool,{pool,active}).
--record(worker_node_pool,{pool_node,active}).
+%% -record(worker_node,{node,active}).
+-record(worker_pool,{pool,nodes,idx}).
+%% -record(worker_node_pool,{pool_node,active}).
 
 
 -record(api_command,{module,function,description="",format=""}).
