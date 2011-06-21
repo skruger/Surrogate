@@ -53,26 +53,26 @@ proxy_mod_stop(_Conf) ->
 %% check_user("skruger","test") ->
 %% 	ok;
 check_user(User,Pass) ->
-	gen_server:call(?MODULE,{auth,User,Pass}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{auth,User,Pass}).
 list_users() ->
-	gen_server:call(?MODULE,list_users).
+	gen_server:call(pg2:get_closest_pid(?MODULE),list_users).
 is_user(Uname) ->
-	gen_server:call(?MODULE,{is_user,Uname}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{is_user,Uname}).
 add_user(User,Pass) ->
-	gen_server:call(?MODULE,{add_user,User,Pass}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{add_user,User,Pass}).
 delete_user(User) ->
-	gen_server:call(?MODULE,{delete_user,User}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{delete_user,User}).
 
 check_user(Mode,User,Pass) ->
-	gen_server:call(?MODULE,{Mode,auth,User,Pass}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{Mode,auth,User,Pass}).
 list_users(Mode) ->
-	gen_server:call(?MODULE,{Mode,list_users}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{Mode,list_users}).
 is_user(Mode,Uname) ->
-	gen_server:call(?MODULE,{Mode,is_user,Uname}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{Mode,is_user,Uname}).
 add_user(Mode,User,Pass) ->
-	gen_server:call(?MODULE,{Mode,add_user,User,Pass}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{Mode,add_user,User,Pass}).
 delete_user(Mode,User) ->
-	gen_server:call(?MODULE,{Mode,delete_user,User}).
+	gen_server:call(pg2:get_closest_pid(?MODULE),{Mode,delete_user,User}).
 
 
 %% --------------------------------------------------------------------
@@ -84,6 +84,8 @@ delete_user(Mode,User) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init(Conf) ->
+	pg2:create(?MODULE),
+	pg2:join(?MODULE,self()),
 	Mode = proplists:get_value(default_auth,Conf,mnesia),
 	case proxyconf:get(mode,worker) of
 		master ->
