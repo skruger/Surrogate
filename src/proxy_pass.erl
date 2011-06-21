@@ -56,7 +56,7 @@ start(Node,Args) ->
 %% 			?DEBUG_MSG("Starting remote ~p on ~p.~n",[?MODULE,Node]),
 			receive
 				Ret -> Ret
-			after 5000 -> 
+			after 1500 -> 
 					?ERROR_MSG("Timeout passing traffic to worker node (~p).  Starting locally.~n",[Node]),
 					do_start(Args)
 			end;
