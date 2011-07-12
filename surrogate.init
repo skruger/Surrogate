@@ -15,6 +15,12 @@ ACCESSLOG=$LOGPATH/access.log
 NODENAME=surrogate@`hostname`
 DBGNODENAME=debug$NODENAME
 
+ERL_CMD=erl
+
+if [ -f /etc/sysconfig/surrogate ]; then
+. /etc/sysconfig/surrogate
+fi
+
 export HOME=$SURROGATE_PATH
 
 cd $SURROGATE_PATH
@@ -37,7 +43,7 @@ debug(){
 if checkpid; then
 	echo "Unable to debug.  Surrogate not running"
 else
-	erl -name $DBGNODENAME -remsh $NODENAME
+	$ERL_CMD -name $DBGNODENAME -remsh $NODENAME
 fi
 }
 
@@ -50,7 +56,7 @@ start(){
 if checkpid; then
 	echo -n "Starting Surrogate... "
 	cd $SURROGATE_PATH
-	erl -pa $SURROGATE_PATH/ebin/ -s surrogate_app run -config surrogate -detached -pidfile $PIDFILE -name $NODENAME $OPTS
+	$ERL_CMD -pa $SURROGATE_PATH/ebin/ -s surrogate_app run -config surrogate -detached -pidfile $PIDFILE -name $NODENAME $OPTS
 	echo "OK"
 	RETVAL=0
 else
