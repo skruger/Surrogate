@@ -123,16 +123,16 @@ make_childspec(L) ->
 				Spec = {Name,{proxy_socks45,start_link,[S]},
 						permanent,10000,worker,[]},
 				[Spec];
-			{Bal,{ip,IP0},Port,_} = S when (Bal == proxy_http) or (Bal == proxy_transparent) or (Bal == balance_http) ->
+			{listen_plain,{ip,IP0},Port,_} = S ->
 				IP = proxylib:inet_parse(IP0),
-				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_http,proxylib:format_inet(IP),Port]))),
-				Spec = {Name,{proxy_http,start_link,[S]},
+				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[listen_plain,proxylib:format_inet(IP),Port]))),
+				Spec = {Name,{proxy_listener,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
-			{Bal,{ip,IP0},Port,_} = S when (Bal == proxy_https) or (Bal == balance_https) ->
+			{listen_ssl,{ip,IP0},Port,_} = S ->
 				IP = proxylib:inet_parse(IP0),
-				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_https,proxylib:format_inet(IP),Port]))),
-				Spec = {Name,{proxy_http,start_link,[S]},
+				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[listen_ssl,proxylib:format_inet(IP),Port]))),
+				Spec = {Name,{proxy_listener,start_link,[S]},
 						permanent, 2000,worker,[]},
 				[Spec];
 			Undef ->

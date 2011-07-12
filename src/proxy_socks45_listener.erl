@@ -49,10 +49,10 @@ init(Args) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 accept(wait, StateData) ->
-	case gen_tcp:accept((StateData#state.listen_args)#proxy_listener.listen_sock) of
+	case gen_tcp:accept((StateData#state.listen_args)#socks_listener.listen_sock) of
 		{ok,Sock0} ->
 			{ok,Sock} = gen_socket:create(Sock0,gen_tcp),
-			gen_server:cast((StateData#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
+			gen_server:cast((StateData#state.listen_args)#socks_listener.parent_pid,{child_accepted,self()}),
 			gen_fsm:send_event(self(),recv_version),
 %% 			io:format("Accepted ~p~n",[Sock]),
 			{next_state,socks_init,StateData#state{client_sock=Sock}};
@@ -62,7 +62,7 @@ accept(wait, StateData) ->
 			{next_state,accept,StateData};
 		Err ->
 			?ERROR_MSG("Accept error: ~p~n",[Err]),
-			gen_server:cast((StateData#state.listen_args)#proxy_listener.parent_pid,{child_accepted,self()}),
+			gen_server:cast((StateData#state.listen_args)#socks_listener.parent_pid,{child_accepted,self()}),
 			{stop,normal,StateData}
 	end.
 
@@ -189,7 +189,7 @@ http_proxy({connect,_Ver},State) ->
 	Sock = State#state.client_sock,
 %% 	ReqHdr = header_parse:get_headers(Sock,request),
 %% 	?INFO_MSG("Reqhdr: ~p~n",[ReqHdr]),
-	{ok,Pid} = proxy_pass:start(#proxy_pass{config=(State#state.listen_args)#proxy_listener.config}),
+	{ok,Pid} = proxy_pass:start(#proxy_pass{config=(State#state.listen_args)#socks_listener.config}),
 	gen_socket:controlling_process(Sock,Pid),
 	gen_fsm:send_event(Pid,{socket,Sock}),
 	{stop,normal,State}.

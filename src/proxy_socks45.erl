@@ -51,7 +51,7 @@ init([{proxy_socks45,{ip,IP0},Port,PropList}=A]) ->
 	InetVer = proxylib:inet_version(Bind),
     case gen_tcp:listen(Port,[Bind,InetVer,binary,{active,false},{reuseaddr,true}]) of
 		{ok,ListenSock} ->
-			Listener = #proxy_listener{listen_sock = ListenSock,parent_pid=self(),config=PropList},
+			Listener = #socks_listener{listen_sock = ListenSock,parent_pid=self(),config=PropList},
 			gen_server:cast(self(),check_listeners),
 			{ok, #state{listener=Listener,num_listeners=?LISTENERS,listeners=[]}};
 		Err ->
