@@ -7,24 +7,72 @@
 % 5: DEBUG+
 {log_level, 4}.
 
-%{mysql_conn,{ Host, Port, User, Pass, Database }}.
-%{mysql_conn,{"localhost",3306, "surrogate", "spass", "surrogate"}}.
-
-%{auth_mode,mnesia}.
-%{auth_mode,mysql}.
 
 {listeners,[
+
 %			{proxy_socks45,{ip,{0,0,0,0}},1080,[
 %							{stream_filters,[filter_force_chunk]}
 %							]},
-
 %%%  Use {ip,"::"} or {ip,{0,0,0,0,0,0,0,0}} to listen IPv6 
-			{proxy_transparent,{ip,{0,0,0,0}},3128,[
-							enable_gzip,		
-							{stream_filters,[filter_auth_basic,filter_headers]},
-							{filter_headers,[{add,"X-modified-by: Surrogate"}]},
-							{proxy_auth,false}					
-							]}
+%			{listen_plain,{ip,{0,0,0,0}},3128,[
+%				enable_gzip,		
+%				{stream_filters,[mod_forward_proxy,filter_auth_basic,filter_headers]},
+%				{filter_headers,[{add,"X-modified-by: Surrogate"}]},
+%				{proxy_auth,false}					
+%				]}
+%				,
+%			{listen_ssl,{ip,"::"},443,[  %% Terminate SSL on 0.0.0.0:443 to localhost:80
+%				{protocol,http},
+				%% keyfile and certfile are requred for ssl listeners.
+%				{keyfile,"/etc/pki/tls/private/localhost.key"},
+%				{certfile,"/etc/pki/tls/certs/localhost.crt"},
+%				{proxy_host,{{ip,{127,0,0,1}},80}},
+%				%{pool,localpool},
+%				%{backend_port,80},
+%				{stream_filters,[filter_headers]},
+%				{filter_headers,[xforwardfor]}
+%				]}
 			]}.
+
+{modules,[  %% Modules implementing proxy_mod behaviour will be started and stopped.
+%	{mod_mysql,[{sql_auth,"localhost",3306, "user", "password", "database"}]},
+%	{proxy_auth,[
+%				{default_auth,mnesia} %% This is the default setting.
+				%%{default_auth,{mysql,sql_auth}} 
+				%% {mysql,ConnName} must have ConnName in mod_mysql connection list.
+%				]}
+%	,
+
+	%% Use mod_worker to configure a slave node for proxy_pass offloading.
+%	{mod_worker,[
+	%		{manager_nodes,[]}
+	%		,
+	%		{pools,[testing]}
+%				]},
+	%% Use mod_worker_manager to create a master node for controlling proxy_pass offloading.
+	%% Nodes that run mod_worker_manager should be listed in {manager_nodes,[]} for mod_worker.
+	%{mod_worker_manager,[{pools,[testing]}]},
+	%% Configuration options for the cluster_supervisor application.
+%	{mod_cluster,[
+%		%{ifconfig_script,"sudo /sbin/ifconfig"},
+%		%{ip_script,"sudo /sbin/ip"},
+%		%{listen_interface,"eth1"},
+%		{quorum,1}
+%		]},
+%	{mod_balance,[
+%		{localpool,balance_round_robin,[
+%				{hosts,[
+%					{192,168,19,81},
+%					{192,168,19,82},
+%					{192,168,19,83},
+%					{192,168,19,84},
+%					{192,168,19,85}
+%					]},
+%				{checks,[
+%					{healthcheck_tcp,[{port,80}]}
+%					]}
+%			   ]}
+%		]}
+	]}.
 
 
