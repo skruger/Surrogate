@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1,start/2,start_remote/2,setproxyaddr/3,addproxyaddr/3,setproxypool/4]).
+-export([start/1,start/2,start_remote/2,setproxyaddr/2,addproxyaddr/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -76,16 +76,16 @@ start_remote(Parent,Args) ->
 	ok.
 
 %% Set proxy address to LB pool.
-setproxypool(Pid,Pool,Port,Retries) ->
-	gen_fsm:send_all_state_event(Pid,{setproxypool,{pool,Pool,Port,Retries}}).
+%% setproxypool(Pid,Pool,Port,Retries) ->
+%% 	gen_fsm:send_all_state_event(Pid,{setproxypool,{pool,Pool,Port,Retries}}).
 
 %% Clears and replaces the proxy address list
-setproxyaddr(Pid,Host,Port) ->
-	gen_fsm:send_all_state_event(Pid,{setproxyaddr,{host,Host,Port}}).
+setproxyaddr(Pid,HostDef) ->
+	gen_fsm:send_all_state_event(Pid,{setproxyaddr,HostDef}).
 
 %% Appends to the proxy address list
-addproxyaddr(Pid,Host,Port) ->
-	gen_fsm:send_all_state_event(Pid,{addproxyaddr,{host,Host,Port}}).
+addproxyaddr(Pid,HostDef) ->
+	gen_fsm:send_all_state_event(Pid,{addproxyaddr,HostDef}).
 
 %% ====================================================================
 %% Server functions
@@ -176,7 +176,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 			Req=ReqHdr#header_block.request,
 			ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
 			RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)]),
-			case tcp_connect(State#proxy_pass.reverse_proxy_host,State) of
+			case proxy_protocol:tcp_connect(State#proxy_pass.reverse_proxy_host) of
 				{ok,SSock} ->
 					gen_socket:send(SSock,RequestHeaders),
 					proxy_read_request:get_next(State#proxy_pass.request_driver),
@@ -341,15 +341,23 @@ proxy_error(Msg,State) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-handle_event({setproxypool,{pool,_Pool,_Port,_Retries}=PoolDef}, StateName, StateData) ->
-	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=[PoolDef]}};
-handle_event({setproxyaddr,{host,Host,Port}}, StateName, StateData) ->
-	ProxyHost = [{host,IP,Port} || IP <- resolve_addr(Host,StateData)],
-	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
-handle_event({addproxyaddr,{host,Host,Port}}, StateName,StateData) ->
+%% handle_event({setproxypool,{pool,_Pool,_Port,_Retries}=PoolDef}, StateName, StateData) ->
+%% 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=[PoolDef]}};
+%% handle_event({setproxyaddr,{host,Host,Port}}, StateName, StateData) ->
+%% 	ProxyHost = [{host,IP,Port} || IP <- proxy_protocol:resolve_addr(Host,StateData#proxy_pass.config)],
+%% 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
+%% handle_event({setproxyaddr,{host_ssl,Host,Port,Conf}}, StateName, StateData) ->
+%% 	ProxyHost = [{host_ssl,IP,Port,Conf} || IP <- proxy_protocol:resolve_addr(Host,StateData#proxy_pass.config)],
+%% 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
+%% handle_event({addproxyaddr,{host,Host,Port}}, StateName,StateData) ->
+%% 	ExistingHosts = StateData#proxy_pass.reverse_proxy_host,
+%% 	ProxyHost = [{host,IP,Port} || IP <- proxy_protocol:resolve_addr(Host,StateData#proxy_pass.config)],
+%% 	{next_state,StateName,StateData#proxy_pass{reverse_proxy_host=ExistingHosts++ProxyHost}};
+handle_event({setproxyaddr,TargetList}, StateName,StateData) ->
+	{next_state,StateName,StateData#proxy_pass{reverse_proxy_host=TargetList}};
+handle_event({addproxyaddr,TargetList}, StateName,StateData) ->
 	ExistingHosts = StateData#proxy_pass.reverse_proxy_host,
-	ProxyHost = [{host,IP,Port} || IP <- resolve_addr(Host,StateData)],
-	{next_state,StateName,StateData#proxy_pass{reverse_proxy_host=ExistingHosts++ProxyHost}};
+	{next_state,StateName,StateData#proxy_pass{reverse_proxy_host=ExistingHosts++TargetList}};
 handle_event(Event, StateName, StateData) ->
 	?INFO_MSG("~p:handle_event() received unknown event: ~p~n",[?MODULE,Event]),
 	{next_state, StateName, StateData}.
@@ -480,75 +488,4 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-
-resolve_addr({ip,Addr},PPC) ->
-%% 	?ERROR_MSG("Strip {ip,_}~n",[]),
-	resolve_addr(Addr,PPC);
-resolve_addr({_,_,_,_}=Addr,_PPC) ->
-	[Addr];
-resolve_addr({_,_,_,_,_,_,_,_}=Addr,_PPC) ->
-	[Addr];
-resolve_addr(HostStr,PPC) ->
-	case proplists:get_value(inet6,PPC#proxy_pass.config,false) of
-		true ->
-			case proxylib:inet_getaddr(HostStr,inet6) of
-				{ip,{_,_,_,_,_,_,_,_}=Addr6} ->
-					case proxylib:inet_getaddr(HostStr,inet) of
-						{ip,Addr4} ->
-							[Addr6,Addr4];
-						_ ->
-							[Addr6]
-					end;
-				{ip,Addr4} ->
-					[Addr4];
-				Noaddr -> 
-					[{error,enohost,Noaddr}]
-			end;
-		false ->
-			case proxylib:inet_getaddr(HostStr,inet) of
-				{ip,Addr4} ->
-					[Addr4];
-				Noaddr ->
-					[{error,enohost,Noaddr}]
-			end
-	end.
-
-tcp_connect([],_PPC) ->
-	{error,"No servers to connect to."};
-tcp_connect([{pool,_Pool,_Port,0}|R],PPC) ->
-	tcp_connect(R,PPC);
-tcp_connect([{pool,Pool,Port,Retries}|R],PPC) ->
-%% 	?ERROR_MSG("Getting host from pool ~p with ~p retries.~n",[Pool,Retries]),
-	case gen_balancer:next(Pool,#client_info{}) of
-		{_,_,_,_} = Addr ->
-			tcp_connect([{host,Addr,Port},{pool,Pool,Port,Retries-1}|R],PPC);
-		{Addr,Port2} ->
-			tcp_connect([{host,Addr,Port2},{pool,Pool,Port,Retries-1}|R],PPC);
-		_ -> tcp_connect(R,PPC)
-	end;
-tcp_connect([{host,{error,Err,Host},_Port}],_PPC) ->
-	EMsg = io_lib:format("Internal proxy error: ~p connecting to ~p",[Err,Host]),
-	{error,EMsg};
-tcp_connect([{host,{error,Err,Host},_Port}|R],PPC) ->
-	?DEBUG_MSG("Error ~p connecting to host ~p~n",[Err,Host]),
-	tcp_connect(R,PPC);
-tcp_connect([{host,Host,Port}|R],PPC) ->
-	InetVer = proxylib:inet_version(Host),
-	Timeout = 
-	case R of
-		[] -> 30000;
-		_ -> 3000
-	end,
-	case gen_tcp:connect(Host,Port,[binary,InetVer,{active,false}],Timeout) of
-		{ok,SSock0} ->
-			gen_socket:create(SSock0,gen_tcp);
-		ErrConn when R == [] ->
-			?ERROR_MSG("Could not Connect to server: ~p ~p~n",[PPC#proxy_pass.reverse_proxy_host,ErrConn]),
-			EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
-			{error,EMsg};
-		_Err ->
-%% 			?DEBUG_MSG("tcp_connect error: ~p ~p~nContinuing with next host in list.~n",[Host,Err]),
-			tcp_connect(R,PPC)
-	end.
-
 	

@@ -25,12 +25,8 @@ handle_protocol(State) ->
 	ProxyPass = #proxy_pass{proxy_type=transparent_proxy,config=State#proxy_listener.proplist},
 	{ok,Pid} = proxy_pass:start(ProxyPass),
 	gen_socket:controlling_process(Sock,Pid),
-	case proxy_protocol:get_proxy_target(State) of
-		{pool,Pool,Port,Retries} ->
-			proxy_pass:setproxypool(Pid, Pool, Port, Retries);
-		{host,Addr,Port} ->
-			proxy_pass:setproxyaddr(Pid,Addr,Port);
-		_ -> ok
-	end,
+	Target = proxy_protocol:get_proxy_target(State),
+%% 	?ERROR_MSG("Target: ~p~n",[Target]),
+	proxy_pass:setproxyaddr(Pid,Target),
 	gen_fsm:send_event(Pid,{socket,Sock}).
 

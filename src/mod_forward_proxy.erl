@@ -55,8 +55,10 @@ process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
 	HDict = proxylib:header2dict(Hdr#header_block.headers),
 	case dict:find("host",HDict) of
 		{ok,HostStr} ->
-			{host,Host,Port} = proxylib:parse_host(HostStr,80),
-			proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,Host,Port);
+			{host,_Host,_Port} = TargetHost = proxylib:parse_host(HostStr,80),
+			TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_pass.config),
+%% 			?ERROR_MSG("TargetList: ~p~n",[TargetList]),
+			proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,TargetList);
 		_ -> ok
 	end,
 	HBlock;

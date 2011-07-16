@@ -72,7 +72,7 @@ process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData,ProxyPassRecord) ->
 			FMod:process_hook(FPid,Hook,Data,ProxyPassRecord)
 		catch
 			_:Error ->
-				?ERROR_MSG("Error processing hook ~p: ~p~n",[F,Error]),
+				?ERROR_MSG("Error processing hook ~p: ~p~n~p~n",[F,Error,erlang:get_stacktrace()]),
 				error
 		end of
 		error ->

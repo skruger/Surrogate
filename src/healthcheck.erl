@@ -56,8 +56,8 @@ monitor_parent({?MODULE,Pid}) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init({Pool,Host,Conf}) ->
-	Name = list_to_atom("cm_"++erlang:pid_to_list(self())),
-	register(Name,self()),
+%% 	Name = list_to_atom("cm_"++erlang:pid_to_list(self())),
+%% 	register(Name,self()),
 	lists:foreach(fun(Check) ->
 						  gen_server:cast(self(),{start_check,Check})
 				  end,Conf),

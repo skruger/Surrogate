@@ -46,7 +46,11 @@ start_link(Args) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 init({listen_plain,{ip,IP0},Port,Props}=L) ->
-	?INFO_MSG("~p HTTP listening: ~p~n",[?MODULE,L]),
+	erlang:send_after(2000,self(),child_check_timer),
+	?INFO_MSG("~p PLAIN listening: ~p~n",[?MODULE,L]),
+	ProtocolType = proplists:get_value(protocol,Props,undefined_listener_protocol),
+	ListenName = lists:flatten(io_lib:format("plain_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
+ 	erlang:register(list_to_atom(ListenName),self()),
 	Listeners = proplists:get_value(num_listeners,Props,1),
 	Bind = {ip,proxylib:inet_parse(IP0)},
 	Opts =
@@ -56,30 +60,34 @@ init({listen_plain,{ip,IP0},Port,Props}=L) ->
 			inet6 ->
 				[Bind,binary,{active,false},inet6]
 		end,
-	?INFO_MSG("~p HTTP listening: ~p~ngen_tcp:listen(~p,~p)~n",[?MODULE,L,Port,Opts]),
+	?INFO_MSG("~p PLAIN listening: ~p~ngen_tcp:listen(~p,~p)~n",[?MODULE,L,Port,Opts]),
 	case gen_tcp:listen(Port,Opts) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
-			{ok, listen_master, #socket_state{type=http,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
+			{ok, listen_master, #socket_state{type=plain,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
 			error_logger:error_msg("Error on listen() ~p~nSleeping before retry.~n",[Err]),
 			timer:sleep(2000),
 			case gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
 				{ok,Listen} ->
 					gen_fsm:send_event(self(),check_listeners),
-					{ok, listen_master, #socket_state{type=http,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
+					{ok, listen_master, #socket_state{type=plain,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 				Err2 ->
 					?ERROR_MSG("~p could not start with args ~p~nError: ~p~n",[?MODULE,L,Err2]),
 					{stop,error}
 			end
 	end;
-init({http,Listen,Port,Props,Parent}=_L) ->
-	{ok,accept_plain,#proxy_listener{type=http,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
+init({plain,Listen,Port,Props,Parent}=_L) ->
+	{ok,accept_plain,#proxy_listener{type=plain,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
 
 init({listen_ssl,{ip,IP0},Port,Props}=L)->
+	erlang:send_after(2000,self(),child_check_timer),
+	ProtocolType = proplists:get_value(protocol,Props,undefined_listener_protocol),
+	ListenName = lists:flatten(io_lib:format("ssl_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
+ 	erlang:register(list_to_atom(ListenName),self()),
 	Listeners = proplists:get_value(num_listeners,Props,1),
 	ssl:start(),
-	?INFO_MSG("~p HTTPS listening: ~p~n",[?MODULE,L]),
+	?INFO_MSG("~p SSL listening: ~p~n",[?MODULE,L]),
  	KeyFile = proplists:get_value(keyfile,Props),
  	CertFile = proplists:get_value(certfile,Props),
 	Bind = {ip,proxylib:inet_parse(IP0)},
@@ -91,21 +99,21 @@ init({listen_ssl,{ip,IP0},Port,Props}=L)->
 	case catch ssl:listen(Port,Opts) of
 		{ok,Listen} ->
 			gen_fsm:send_event(self(),check_listeners),
-			{ok,listen_master,#socket_state{type=https,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
+			{ok,listen_master,#socket_state{type=ssl,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
  			error_logger:error_msg("Error on ssl listen() ~p~nSleeping before retry.~n",[Err]),
 			timer:sleep(2000),
 			case catch gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
 				{ok,Listen} ->
 					gen_fsm:send_event(self(),check_listeners),
-					{ok,listen_master,#socket_state{type=https,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
+					{ok,listen_master,#socket_state{type=ssl,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 				Err2 ->
 					?ERROR_MSG("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err2]),
 					{stop,Err2}
 			end
 	end;
-init({https,_Listen,Port,Props,Parent}=_L) ->
-	{ok,accept_ssl,#proxy_listener{type=https,listen_port=Port,proplist=Props,parent_pid=Parent}}.
+init({ssl,_Listen,Port,Props,Parent}=_L) ->
+	{ok,accept_ssl,#proxy_listener{type=ssl,listen_port=Port,proplist=Props,parent_pid=Parent}}.
 
 
 %% --------------------------------------------------------------------
@@ -129,7 +137,7 @@ listen_master(startchild,State) ->
 	case gen_fsm:start_link(?MODULE,{State#socket_state.type,State#socket_state.listener,State#socket_state.listen_port,State#socket_state.proplist,self()},[]) of
 		{ok,Pid} ->
 			erlang:monitor(process,Pid),
-			erlang:register(list_to_atom(lists:append(atom_to_list(State#socket_state.type),pid_to_list(Pid))),Pid),
+%% 			erlang:register(list_to_atom(lists:append(atom_to_list(State#socket_state.type),pid_to_list(Pid))),Pid),
 			gen_fsm:send_event(Pid,{wait,State#socket_state.listener}),
 %% 			?FQDEBUG("Started child ~p~n",[Pid]),
 			{next_state,listen_master,State#socket_state{listeners = [Pid|State#socket_state.listeners]}};
@@ -139,7 +147,11 @@ listen_master(startchild,State) ->
 	end;
 listen_master({child_accepted,Pid},State) ->
 	gen_fsm:send_event(self(),check_listeners),
-	{next_state,listen_master,State#socket_state{listeners = lists:delete(Pid,State#socket_state.listeners)}}.
+	{next_state,listen_master,State#socket_state{listeners = lists:delete(Pid,State#socket_state.listeners)}};
+listen_master(child_check_timer,State) ->
+	gen_fsm:send_event(self(),check_listeners),
+	erlang:send_after(2000,self(),child_check_timer),
+	{next_state,listen_master,State}.
 
 
 accept_plain({wait,_ListenSock},State) ->
