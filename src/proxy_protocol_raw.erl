@@ -26,12 +26,6 @@ handle_protocol(PListener) ->
 	Target = proxy_protocol:get_proxy_target(PListener),
 	TargetList = proxy_protocol:resolve_target_list(Target,PListener#proxy_listener.proplist),
 	{ok,ServerSock} = proxy_protocol:tcp_connect(TargetList),
-	
- 	ServerPid = spawn(proxy_connect,server_loop,[ServerSock,undefined]),
-	ClientPid = spawn(proxy_connect,client_loop,[ClientSock,undefined]),
-	gen_socket:controlling_process(ServerSock,ServerPid),
-	gen_socket:controlling_process(ClientSock,ClientPid),
-	ServerPid ! {client,ClientPid},
-	ClientPid ! {server,ServerPid},
+	proxy_connect:bridge_client_server(ClientSock, ServerSock),
 	ok.
 

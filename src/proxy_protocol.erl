@@ -11,6 +11,7 @@
 %% Exported Functions
 %%
 -export([get_module/1,behaviour_info/1,get_proxy_target/1,resolve_addr/2,tcp_connect/1,resolve_target_list/2]).
+-export([handle_protocol/1,handle_protocol2/1]).
 
 %%
 %% API Functions
@@ -21,6 +22,21 @@ behaviour_info(callbacks) ->
 behaviour_info(_) ->
 	undefined.
 
+%% Get execution into separate process so that crashes don't propagate back to listener through process links.
+handle_protocol(State) ->
+	Pid = spawn(?MODULE,handle_protocol2,[State]),
+	gen_socket:controlling_process(State#proxy_listener.client_sock,Pid),
+	Pid ! run_handle_protocol, % Sync to avoid race.
+	ok.
+
+%% wait for 'run' before starting.  handle_protocol must set the gen_socket 
+%% controlling_process before anything in the handle_protocol2 process executes.
+handle_protocol2(State) ->
+	receive run_handle_protocol -> ok end,
+	Personality = proplists:get_value(protocol,State#proxy_listener.proplist),
+	Mod = proxy_protocol:get_module(Personality),
+	apply(Mod,handle_protocol,[State]).
+	
 get_module(Name) ->
 	list_to_atom("proxy_protocol_"++atom_to_list(Name)).
 

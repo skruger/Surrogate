@@ -111,7 +111,7 @@ socks_request(recv_request,State) ->
 						{ok,ServerSock0} ->
 							{ok,ServerSock} = gen_socket:create(ServerSock0,gen_tcp),
 							gen_socket:send(State#state.client_sock,<<5:8/integer,0:8/integer,0:8/integer,AddrInfo/binary>>),
-							proxy_connect:socks5_connect(State#state.client_sock,ServerSock),
+							proxy_connect:bridge_client_server(State#state.client_sock,ServerSock),
 							{stop,normal,State};
 						{error,econnrefused} ->
 							?ERROR_MSG("Connection refused: ~p:~p~n",[Host,Port]),
@@ -169,7 +169,7 @@ socks4_request({request,<<4:8/integer,1:8/integer,Port:16/integer,A:8,B:8,C:8,D:
 				{ok,ServerSock0} ->
 					{ok,ServerSock} = gen_socket:create(ServerSock0,gen_tcp),
 					gen_socket:send(State#state.client_sock,<<0:8/integer,90:8/integer,Port:16/integer,A:8,B:8,C:8,D:8>>),
-					proxy_connect:socks5_connect(State#state.client_sock,ServerSock),
+					proxy_connect:bridge_client_server(State#state.client_sock,ServerSock),
 					{stop,normal,State};
 				Err ->
 					?ERROR_MSG("General connection error (socks4): ~p ~p:~p~n",[Err,Host,Port]),

@@ -160,9 +160,7 @@ accept_plain({wait,_ListenSock},State) ->
 			{ok,Sock} = gen_socket:create(Sock0,gen_tcp),
 			gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
 			gen_fsm:send_event(self(),get_headers),
-			Personality = proplists:get_value(protocol,State#proxy_listener.proplist),
-			Mod = proxy_protocol:get_module(Personality),
-			apply(Mod,handle_protocol,[State#proxy_listener{client_sock=Sock}]),
+			proxy_protocol:handle_protocol(State#proxy_listener{client_sock=Sock}),
 			{stop,normal,State};
 		{error,timeout} ->
 			?INFO_MSG("~p: Accept timeout, retrying.~n",[?MODULE]),
@@ -185,9 +183,7 @@ accept_ssl({wait,ListenSock},State) ->
 					{ok,Sock} = gen_socket:create(SSLSock,ssl),
 					gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
 					gen_fsm:send_event(self(),get_headers),
-					Personality = proplists:get_value(protocol,State#proxy_listener.proplist),
-					Mod = proxy_protocol:get_module(Personality),
-					apply(Mod,handle_protocol,[State#proxy_listener{client_sock=Sock}]),
+					proxy_protocol:handle_protocol(State#proxy_listener{client_sock=Sock}),
 					{stop,normal,State};
 				{'EXIT',Err} ->
 					?ERROR_MSG("Error in ssl_accept:~n~p~n",[Err]),

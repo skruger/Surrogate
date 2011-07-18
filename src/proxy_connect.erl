@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([client_loop/2,server_loop/2,http_connect/1,socks5_connect/2]).
+-export([client_loop/2,server_loop/2,http_connect/1,bridge_client_server/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -46,7 +46,7 @@ http_connect(ProxyPass) ->
 			Err
 	end.
 
-socks5_connect(ClientSock,ServerSock) ->
+bridge_client_server(ClientSock,ServerSock) ->
 	ServerPid = spawn(?MODULE,server_loop,[ServerSock,undefined]),
 	ClientPid = spawn(?MODULE,client_loop,[ClientSock,undefined]),
 	gen_socket:controlling_process(ServerSock,ServerPid),
