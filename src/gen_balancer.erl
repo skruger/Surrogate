@@ -16,7 +16,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start_link/3,start/2, next/2,set_host_state/3,get_host_healthcheckers/1,behaviour_info/1]).
+-export([start_link/3,start/2,is_alive/1,next/2,set_host_state/3,get_host_healthcheckers/1,behaviour_info/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -33,7 +33,7 @@ behaviour_info(_) ->
 
 start_link(Name,Mod,Args) ->
 	?DEBUG_MSG("~p ~p ~p~n",[Name,?MODULE,[Mod,Args]]),
-	case gen_server:start_link(Name,?MODULE,[Mod,Args],[]) of
+	case gen_server:start_link({local,Name},?MODULE,[Mod,Args],[]) of
 		{ok,Pid} = OK ->
 			case Name of
 				{_,Proc} when is_atom(Proc) ->
@@ -49,6 +49,13 @@ start_link(Name,Mod,Args) ->
 
 start(Mod,Args) ->
 	gen_server:start(Mod,[Mod,Args],[]).
+
+is_alive(Pool) ->
+	case whereis(proxylib:get_pool_process(Pool)) of
+		Pid when is_pid(Pid) ->
+			true;
+		_ -> false
+	end.
 
 next(Pool,ClientInfo) ->
 	Ref = proxylib:get_pool_process(Pool),
