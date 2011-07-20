@@ -50,7 +50,7 @@ start_link(Args) ->
 %%          {error, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
-	{ok,{{one_for_one,5,1},
+	{ok,{{one_for_one,10,2},
 		 [{surrogate_log,
 		   {surrogate_log,start_link,[]}, %%"Surrogate/surrogate.log","Surrogate/access.log"
 		   permanent,

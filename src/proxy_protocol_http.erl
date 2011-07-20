@@ -26,7 +26,7 @@ handle_protocol(State) ->
 	{ok,Pid} = proxy_pass:start(ProxyPass),
 	gen_socket:controlling_process(Sock,Pid),
 	Target = proxy_protocol:get_proxy_target(State),
-%% 	?ERROR_MSG("Target: ~p~n",[Target]),
-	proxy_pass:setproxyaddr(Pid,Target),
+	TargetList = proxy_protocol:resolve_target_list(Target, State#proxy_listener.proplist),
+	proxy_pass:setproxyaddr(Pid,TargetList),
 	gen_fsm:send_event(Pid,{socket,Sock}).
 

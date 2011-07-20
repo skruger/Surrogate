@@ -6,6 +6,7 @@
 %%% -------------------------------------------------------------------
 -module(mod_forward_proxy).
 
+-behaviour(proxy_mod).
 -behaviour(gen_server).
 -behaviour(filter_stream).
 %% --------------------------------------------------------------------
