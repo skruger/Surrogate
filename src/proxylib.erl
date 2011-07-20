@@ -281,7 +281,7 @@ timestamp() ->
 
 
 get_pool_process(PoolName) ->
-	{global,list_to_atom("balancer_pool_"++atom_to_list(PoolName))}.
+	list_to_atom("balancer_pool_"++atom_to_list(PoolName)).
 
 
 %% rapply(Node,Mod,Fun,Args) ->
