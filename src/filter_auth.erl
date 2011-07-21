@@ -22,7 +22,7 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_pass{config=PConf}=_PPC) ->
-	?ERROR_MSG("ProxyPass: ~p~n",[PConf]),
+%% 	?ERROR_MSG("ProxyPass: ~p~n",[PConf]),
 	Conf = proplists:get_value(?MODULE,PConf,[]),
 	Dict = proxylib:header2dict(ReqHdr#header_block.headers),
 	{Mode,AuthHdr} = case proplists:get_value(mode,Conf,proxy) of
@@ -33,7 +33,7 @@ process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_pass{conf
 	case dict:find(AuthHdr,Dict) of
 		{ok,"Basic "++AuthStr} ->
 			Auth2 = binary_to_list(base64:decode(AuthStr)),
-			?ERROR_MSG("Userinfo: ~p~n",[Auth2]),
+%% 			?ERROR_MSG("Userinfo: ~p~n",[Auth2]),
 			case string:chr(Auth2,$:) of
 				0 ->
 					AuthRequestResponse;
