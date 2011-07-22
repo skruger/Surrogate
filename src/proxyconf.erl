@@ -92,6 +92,10 @@ init(State) ->
 	?INFO_MSG("Starting ~p.",[?MODULE]),
 	mnesia:create_schema([node()]),
 
+	%% Create http_admin_module table so modules can register themselves with http_admin.
+	mnesia:create_table(http_admin_module,[{attributes,record_info(fields,http_admin_module)},{local_content,true}]),
+	mnesia:clear_table(http_admin_module),
+	
 	%% Start filters as specified in proxy.conf {filter_modules,[{module,ArgList}|_]}
 	Filters = proplists:get_value(modules,State#state.config_terms,[]),
 	spawn(proxy_mod,start_proxy_modules,[Filters]),
