@@ -90,13 +90,21 @@ mnesia_init() ->
 %% --------------------------------------------------------------------
 start(_Type, StartArgs) ->
 	error_logger:info_msg("~p starting.~n",[?MODULE]),
-    case surrogate_sup:start_link(StartArgs) of
-	{ok, Pid} ->
-		error_logger:info_msg("~p supervisor started: ~p~n",[?MODULE,Pid]),
-	    {ok, Pid};
-	Error ->
-		error_logger:error_msg("~p Error: ~p~n",[?MODULE,Error]),
-	    Error
+	case mnesia:wait_for_tables(mnesia:system_info(local_tables),300000) of  %% wait up to 5 minutes for mnesia to become healthy.
+		ok ->
+			case surrogate_sup:start_link(StartArgs) of
+				{ok, Pid} ->
+					error_logger:info_msg("~p supervisor started: ~p~n",[?MODULE,Pid]),
+					{ok, Pid};
+				Error ->
+					error_logger:error_msg("~p Error: ~p~n",[?MODULE,Error]),
+					timer:sleep(2000),
+					Error
+			end;
+		MnesiaError ->
+			error_logger:error_msg("Mnesia did not become ready in ~p:start()!~n~p~n",[?MODULE,MnesiaError]),
+			timer:sleep(2000),
+			MnesiaError
     end.
 
 

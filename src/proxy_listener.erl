@@ -46,7 +46,7 @@ start_link(Args) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 init({listen_plain,{ip,IP0},Port,Props}=L) ->
-	erlang:send_after(2000,self(),child_check_timer),
+	erlang:send_after(20000,self(),child_check_timer),
 	?INFO_MSG("~p PLAIN listening: ~p~n",[?MODULE,L]),
 	ProtocolType = proplists:get_value(protocol,Props,undefined_listener_protocol),
 	ListenName = lists:flatten(io_lib:format("plain_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
@@ -67,7 +67,7 @@ init({listen_plain,{ip,IP0},Port,Props}=L) ->
 			{ok, listen_master, #socket_state{type=plain,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
 			error_logger:error_msg("Error on listen() ~p~nSleeping before retry.~n",[Err]),
-			timer:sleep(2000),
+			timer:sleep(5000),
 			case gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
 				{ok,Listen} ->
 					gen_fsm:send_event(self(),check_listeners),
@@ -81,7 +81,7 @@ init({plain,Listen,Port,Props,Parent}=_L) ->
 	{ok,accept_plain,#proxy_listener{type=plain,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
 
 init({listen_ssl,{ip,IP0},Port,Props}=L)->
-	erlang:send_after(2000,self(),child_check_timer),
+	erlang:send_after(20000,self(),child_check_timer),
 	ProtocolType = proplists:get_value(protocol,Props,undefined_listener_protocol),
 	ListenName = lists:flatten(io_lib:format("ssl_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
  	erlang:register(list_to_atom(ListenName),self()),
@@ -102,7 +102,7 @@ init({listen_ssl,{ip,IP0},Port,Props}=L)->
 			{ok,listen_master,#socket_state{type=ssl,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
  			error_logger:error_msg("Error on ssl listen() ~p~nSleeping before retry.~n",[Err]),
-			timer:sleep(2000),
+			timer:sleep(5000),
 			case catch gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
 				{ok,Listen} ->
 					gen_fsm:send_event(self(),check_listeners),
