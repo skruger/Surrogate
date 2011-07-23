@@ -117,12 +117,6 @@ make_childspec(L) ->
 	try
 		?DEBUG_MSG("make_childspec(~p)~n",[L]),
 		case L of
-			{proxy_socks45,{ip,IP0},Port,_} = S ->
-				IP = proxylib:inet_parse(IP0),
-				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[proxy_socks45,proxylib:format_inet(IP),Port]))),
-				Spec = {Name,{proxy_socks45,start_link,[S]},
-						permanent,10000,worker,[]},
-				[Spec];
 			{listen_plain,{ip,IP0},Port,_} = S ->
 				IP = proxylib:inet_parse(IP0),
 				Name = list_to_atom(lists:flatten(io_lib:format("~p_~s:~p",[listen_plain,proxylib:format_inet(IP),Port]))),

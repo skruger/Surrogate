@@ -4,7 +4,7 @@
 %%%
 %%% Created : Nov 5, 2010
 %%% -------------------------------------------------------------------
--module(proxy_socks45_listener).
+-module(proxy_protocol_socks).
 
 -behaviour(gen_fsm).
 %% --------------------------------------------------------------------
@@ -15,18 +15,26 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([accept/2,socks_init/2,socks_request/2,socks4_request/2,http_proxy/2]).
+-export([handle_protocol/1]).
+
+-export([socks_init/2,socks_request/2,socks4_request/2,http_proxy/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--record(state, {listen_args,recv_buff,client_sock,userinfo}).
+-record(state, {listener,recv_buff,client_sock,userinfo}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
 
+handle_protocol(PListener) ->
+	CSock = PListener#proxy_listener.client_sock,
+	{ok,Pid} = gen_fsm:start(?MODULE,#state{listener=PListener,client_sock=CSock},[]),
+	gen_socket:controlling_process(CSock, Pid),
+	gen_fsm:send_event(Pid,recv_version),
+	ok.
 
 %% ====================================================================
 %% Server functions
@@ -38,9 +46,8 @@
 %%          ignore                              |
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
-init(Args) ->
-	gen_fsm:send_event(self(),wait),
-    {ok, accept, #state{listen_args=Args}}.
+init(State) ->
+    {ok, socks_init, State}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -48,23 +55,6 @@ init(Args) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-accept(wait, StateData) ->
-	case gen_tcp:accept((StateData#state.listen_args)#socks_listener.listen_sock) of
-		{ok,Sock0} ->
-			{ok,Sock} = gen_socket:create(Sock0,gen_tcp),
-			gen_server:cast((StateData#state.listen_args)#socks_listener.parent_pid,{child_accepted,self()}),
-			gen_fsm:send_event(self(),recv_version),
-%% 			io:format("Accepted ~p~n",[Sock]),
-			{next_state,socks_init,StateData#state{client_sock=Sock}};
-		{error,timeout} ->
-			?INFO_MSG("Accept timeout, retrying.~n",[]),
-			gen_fsm:send_event(self(),wait),
-			{next_state,accept,StateData};
-		Err ->
-			?ERROR_MSG("Accept error: ~p~n",[Err]),
-			gen_server:cast((StateData#state.listen_args)#socks_listener.parent_pid,{child_accepted,self()}),
-			{stop,normal,StateData}
-	end.
 
 socks_init(recv_version,StateData) ->
 	case gen_socket:recv(StateData#state.client_sock,0) of
@@ -189,7 +179,8 @@ http_proxy({connect,_Ver},State) ->
 	Sock = State#state.client_sock,
 %% 	ReqHdr = header_parse:get_headers(Sock,request),
 %% 	?INFO_MSG("Reqhdr: ~p~n",[ReqHdr]),
-	{ok,Pid} = proxy_pass:start(#proxy_pass{config=(State#state.listen_args)#socks_listener.config}),
+	
+	{ok,Pid} = proxy_pass:start(#proxy_pass{config=(State#state.listener)#proxy_listener.proplist}),
 	gen_socket:controlling_process(Sock,Pid),
 	gen_fsm:send_event(Pid,{socket,Sock}),
 	{stop,normal,State}.
