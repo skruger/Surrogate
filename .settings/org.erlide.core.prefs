@@ -1,5 +1,5 @@
-#Fri Apr 15 15:39:35 MDT 2011
-backend_version=R13B
+#Thu Jul 21 08:42:57 MDT 2011
+backend_version=R14B
 compiler/allOptions=[\n{'src/filter_stream.erl',\t[]},\n{'src/filter_check.erl',\t[]},\n{'src/proxy_mod.erl',\t[]}\n]
 compiler/debug_info=true
 compiler/encrypt_debug_info=false
@@ -14,6 +14,6 @@ compiler/warn_unused_import=false
 eclipse.preferences.version=1
 external_includes=
 external_modules=
-include_dirs=src/mysql/src;include;
+include_dirs=src/mysql/src;include
 output_dir=ebin
-source_dirs=src/mysql/test;src/mysql/src;src;
+source_dirs=src/extras;src/mysql/test;src/mysql/src;src
