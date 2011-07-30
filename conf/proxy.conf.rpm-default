@@ -10,8 +10,9 @@
 
 {listeners,[
 
-%			{proxy_socks45,{ip,{0,0,0,0}},1080,[
-%							{stream_filters,[filter_force_chunk]}
+%			{listen_plain,{ip,{0,0,0,0}},1080,[
+%							{protocol,socks},
+%							{stream_filters,[mod_forward_proxy]}
 %							]},
 %%%  Use {ip,"::"} or {ip,{0,0,0,0,0,0,0,0}} to listen IPv6 
 %			{listen_plain,{ip,{0,0,0,0}},3128,[
@@ -33,6 +34,9 @@
 %				{filter_headers,[xforwardfor]}
 %				]}
 			]}.
+
+{acl,{http_admin,"user"}}.
+{acl,{http_admin,"user2"}}.
 
 {modules,[  %% Modules implementing proxy_mod behaviour will be started and stopped.
 %	{mod_mysql,[{sql_auth,"localhost",3306, "user", "password", "database"}]},
