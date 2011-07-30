@@ -110,11 +110,16 @@ parse_request({header,Data},#state{request=Req,headers=HeaderList}=StateData) ->
 		{ok,{http_header,_,'Authorization',_,"Basic "++AuthInfo},Rest} ->
 			UserPassBin = base64:decode(AuthInfo),
 			[User,Pass|_] = string:tokens(binary_to_list(UserPassBin),":"),
-			UserInfo = proxy_auth:check_user(User,Pass),
-			HasAuth = case UserInfo of {ok,_} -> true; _ -> false end,
-			?ERROR_MSG("Check user: ~p~n",[UserInfo]),
+			{Auth,HasAuth} = 
+			case proxy_auth:check_user(User,Pass) of
+				{ok,#proxy_userinfo{username=ProxyUser}=UInfo} ->
+					{{User,Pass,UInfo},proxy_acl:get_permission(http_admin,ProxyUser)};
+				_ ->
+					{{User,Pass,undefined},false}
+			end,
+%% 			?ERROR_MSG("Check user: ~p~n",[Auth]),
 			gen_fsm:send_event(self(),{header,Rest}),
-			{next_state, parse_request,StateData#state{request=Req#http_admin{auth={User,Pass},has_auth=HasAuth}}};
+			{next_state, parse_request,StateData#state{request=Req#http_admin{auth=Auth,has_auth=HasAuth}}};
 		{ok,{http_header,_,'Content-Length',_,StrLen},Rest} ->
 			gen_fsm:send_event(self(),{header,Rest}),
 			{next_state, parse_request,StateData#state{body_length=list_to_integer(StrLen)}};

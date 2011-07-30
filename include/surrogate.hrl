@@ -17,6 +17,8 @@
 
 -record(proxy_user,{username,host,auth_method}).
 
+-record(proxy_acl,{list,user}).
+
 -record(header_block,{request,response,rstr,headers,body,expect}).
 
 -record(filter_host_list,{host,rule}).

@@ -18,6 +18,8 @@
 -export([start_instance/0,process_hook/4,proxy_mod_start/1,proxy_mod_stop/1]).
 -export([set_host_pool/2,get_pool_by_host/1]).
 
+%% -export([http_api/2]).
+
 -record(?MODULE,{host,pool}).
 
 %%
@@ -27,9 +29,11 @@
 proxy_mod_start(_Conf) ->
 	mnesia:create_table(?MODULE,[{attributes,record_info(fields,?MODULE)}]),
 	mnesia:change_table_copy_type(?MODULE,node(),disc_copies),
+%% 	proxy_protocol_http_admin:register_module(?MODULE,?MODULE,http_api),
 	ok.
 
 proxy_mod_stop(_Conf) ->
+%% 	proxy_protocol_http_admin:unregister_module(?MODULE),
 	ok.
 
 start_instance() ->
@@ -68,6 +72,11 @@ set_host_pool(Host,Pool) ->
 	F = fun() ->
 				mnesia:write(#?MODULE{host=Host,pool=Pool}) end,
 	mnesia:transaction(F).
+
+%% http_api([],Request) when Request#http_admin.has_auth ->
+%% 	?ERROR_MSG("Request: ~p~n",[Request]),
+%% 	"Host to pool mapping module.".
+%% 	{404,[{"Content-type","text/plain"}],io_lib:format("Path: ~p not found",[Path])}.
 
 %%
 %% Local Functions
