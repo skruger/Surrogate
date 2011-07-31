@@ -15,7 +15,7 @@
 %% -export([send/2,setopts/2]).
 
 -export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
--export([inet_parse/1,format_inet/1,inet_version/1,inet_getaddr/1,inet_getaddr/2]).
+-export([inet_parse/1,format_inet/1,inet_version/1,inet_getaddr/1,inet_getaddr/2,uri_unescape/1]).
 
 %% -export([re/1]).
 %%
@@ -283,6 +283,20 @@ timestamp() ->
 get_pool_process(PoolName) ->
 	list_to_atom("balancer_pool_"++atom_to_list(PoolName)).
 
+uri_unescape(Str) ->
+	uri_unescape2(Str,[]).
+
+uri_unescape2([],Acc) ->
+	lists:reverse(Acc);
+uri_unescape2([$% ,H1,H2|R],Acc) ->
+	case catch list_to_integer([H1,H2],16) of
+		C when is_integer(C) ->
+			uri_unescape2(R,[C|Acc]);
+		_ ->
+			uri_unescape2(R,[H2,H1,$%|Acc])
+	end;
+uri_unescape2([C|R],Acc) ->
+	uri_unescape2(R,[C|Acc]).
 
 %% rapply(Node,Mod,Fun,Args) ->
 %% 	try

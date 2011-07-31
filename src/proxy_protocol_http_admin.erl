@@ -24,9 +24,9 @@
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 -export([register_module/3,unregister_module/1,get_modules/0]).
--export([handle_root/2]).
+-export([handle_root/3]).
 
--record(state, {listener,client_sock,request,headers,auth,body_length,body}).
+-record(state, {listener,client_sock,request,headers,auth,body_length,body,listen_config}).
 
 
 
@@ -36,7 +36,7 @@
 
 handle_protocol(PListener) ->
 	CSock = PListener#proxy_listener.client_sock,
-	{ok,Pid} = gen_fsm:start(?MODULE,#state{listener=PListener,client_sock=CSock},[]),
+	{ok,Pid} = gen_fsm:start(?MODULE,#state{listener=PListener,client_sock=CSock,listen_config=PListener#proxy_listener.proplist},[]),
 	gen_socket:controlling_process(CSock, Pid),
 	gen_fsm:send_event(Pid,read),
 	ok.
@@ -152,11 +152,11 @@ parse_request({body,Data},#state{body_length=Length,client_sock=CSock,request=Re
 			{next_state,handle_request,State#state{request=Req}}
 	end.
 
-handle_request(run,#state{request=Request}=State) ->
+handle_request(run,#state{request=Request,listen_config=Config}=State) ->
 	RequestHandlers = proxy_protocol_http_admin:get_modules() ++ 
 						  [{[],{?MODULE,handle_root}}],
 %% 	?ERROR_MSG("Request: ~p~nHandlers: ~p~n",[Request,RequestHandlers]),
-	Result = route_request(RequestHandlers,Request),
+	Result = route_request(RequestHandlers,Request,Config),
 	gen_fsm:send_event(self(),Result),
 	{next_state,send_response,State}.
 
@@ -233,15 +233,15 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
-route_request([],_Request) ->
+route_request([],_Request,_Conf) ->
 	{404,[],<<"404 Not found.">>};
-route_request([{PathPrefix,{Module,Fun}}|R], #http_admin{path=Path}=Request) ->
+route_request([{PathPrefix,{Module,Fun}}|R], #http_admin{path=Path}=Request,Config) ->
 	case (lists:prefix(PathPrefix,Path) or (PathPrefix == Path)) of
 		true ->
 			LocalPath = lists:nthtail(length(PathPrefix), Path),
 			try
 				
-				case apply(Module,Fun,[LocalPath,Request]) of
+				case apply(Module,Fun,[LocalPath,Request,Config]) of
 					{Res,Hdr,Data} ->
 						{Res,Hdr,iolist_to_binary(Data)};
 					Data when is_list(Data) or is_binary(Data) ->
@@ -260,18 +260,86 @@ route_request([{PathPrefix,{Module,Fun}}|R], #http_admin{path=Path}=Request) ->
 					end
 			end;
 		false ->
-			route_request(R,Request)
+			route_request(R,Request,Config)
 	end.
 			
-handle_root(["output"],Request) ->
-	{200,[{'Content-Type',"text/html"}],iolist_to_binary(["This is some output<br/>\n",Request#http_admin.body,"\n"])};
-handle_root(_,_) ->
-	{404,[],<<"404 Not found.">>}.
+%%handle_root() with zip support:
+% Take config option for root as [{zip,"file1.zip"},{dir,"/path/to/docroot"},{mnesia,'Mneisa_Table_Name'}]
+% Implement favicon through special -define() in surrogate_favicon.hrl
+% Setup system for assigning mime type based on file extension?
 
+handle_root(Path,Request,Config) ->
+	case proplists:get_all_values(docroot,Config) of
+		[] ->
+			{404,[],<<"No docroot configured.">>};
+		Roots when is_list(Roots) ->
+			handle_docroot(Roots,Path,Request);
+		Other ->
+			{404,[],iolist_to_binary(io_lib:format("Not found in: ~p~n",[Other]))}
+	end.
 
+handle_docroot([],_Path,_Request) ->
+	{404,[],<<"404 Not found.">>};
+handle_docroot([{dir,DocRoot}|R],ReqPath,Request) ->
+	RFile = DocRoot ++ string:join(ReqPath,"/"),
+	?ERROR_MSG("File: ~p~n",[filename:extension(RFile)]),
+	case file:read_file_info(RFile) of
+		{ok,FileInfo} ->
+ 			?ERROR_MSG("Opening file: ~p~n~p~n",[RFile,FileInfo]),
+			case file:read_file(RFile) of
+				{ok,Binary} ->
+					{200,get_mime_type(RFile)++[],Binary};
+				{error,eisdir} ->
+					handle_docroot(R,ReqPath,Request);
+				OpenErr ->
+					{500,[],iolist_to_binary(io_lib:format("Error opening file ~p~n",[OpenErr]))}
+			end;
+		_Other ->
+			handle_docroot(R,ReqPath,Request)
+	end;
+handle_docroot([{zip,ZipFile}|R],ReqPath,Request) ->
+	case zip:zip_open(ZipFile,[memory]) of
+		{ok,Handle} ->
+			File = string:join(ReqPath,"/"),
+			case zip:zip_get(File,Handle) of
+				{ok,{_File,Binary}} ->
+					zip:zip_close(Handle),
+					{200,get_mime_type(File),Binary};
+				{error,file_not_found} ->
+					handle_docroot(R,ReqPath,Request);
+				GetErr ->
+					zip:zip_close(Handle),
+					?ERROR_MSG("Error retrieving file from zip:~n~p~n~p~n~p~n",[ZipFile,File,GetErr]),
+					handle_docroot(R,ReqPath,Request)
+			end;
+		OpenErr ->
+			?ERROR_MSG("Error opeinging docroot zip file: ~n~p~n~p~n",[ZipFile,OpenErr]),
+			handle_docroot(R,ReqPath,Request)
+	end;
+handle_docroot([{mnesia,Table}|R],ReqPath,Request) ->
+	case mnesia:dirty_read(Table,ReqPath) of
+		[#surrogate_docroot{filedata=Data}|_] ->
+			{200,[],Data};
+		_ ->
+			handle_docroot(R,ReqPath,Request)
+	end;
+handle_docroot([DocRoot|R],ReqPath,Request) ->
+	?ERROR_MSG("Unknown docroot type: ~p~n",[DocRoot]),
+	handle_docroot(R,ReqPath,Request).
+	
+
+get_mime_type(FileName) ->
+	Ext = filename:extension(FileName),
+	get_mime_type2(Ext).
+
+get_mime_type2(".html") -> [{"Content-Type","text/html"}];
+get_mime_type2(".conf") -> [{"Content-Type","text/plain"}];
+get_mime_type2(_) ->
+	[].
+	
 parse_packet({http_request,Method,{abs_path,PathStr},Ver}=Packet) ->
 	?ERROR_MSG("Header: ~p~n",[Packet]),
-	{ReqStr,GetArgs} = 
+	{ReqStr0,GetArgs} = 
 	case string:chr(PathStr,$?) of
 		ArgIdx when ArgIdx > 0 ->
 			PathStr2 = string:substr(PathStr,1,ArgIdx-1),
@@ -279,6 +347,7 @@ parse_packet({http_request,Method,{abs_path,PathStr},Ver}=Packet) ->
 		_ -> 
 			{string:tokens(PathStr,[$/]),[]}
 	end,
+	ReqStr = [proxylib:uri_unescape(PathPart) || PathPart <- ReqStr0 ],
 	FormData = parse_formdata(GetArgs),
 	?ERROR_MSG("ReqStr: ~p~nGetArgs: ~p~nFormData: ~p~n",[ReqStr,GetArgs,FormData]),
 	#http_admin{method=Method,path=ReqStr,version=Ver,args=FormData,body= <<>>}.
