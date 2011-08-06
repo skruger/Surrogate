@@ -18,8 +18,6 @@
 -export([vip_state/3,listener_name/2,add_listener/1,delete_listener/1,start_vips/1]).
 -export([get_listeners/0,get_listener_details/1]).
 
--record(cluster_listener,{name,ip,port,type,options,supervisor,sup_process_name}).
-
 -record(state,{opts}).
 
 %%
@@ -38,7 +36,6 @@ proxy_mod_start(Conf) ->
 	mnesia:add_table_index(cluster_listener,ip),
 	mnesia:change_table_copy_type(cluster_listener,node(),disc_copies),
 	mnesia:add_table_copy(cluster_listener,node(),disc_copies),
-	
 	application:load(cluster_supervisor),
 	application:set_env(cluster_supervisor,cluster_config,Conf),
 	application:start(cluster_supervisor),
@@ -180,4 +177,4 @@ get_listener_details(L) ->
 		[R|_] -> R;
 		R -> R
 	end.
-			
+		

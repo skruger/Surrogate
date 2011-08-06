@@ -147,7 +147,9 @@ parse_request({body,Data},#state{body_length=Length,client_sock=CSock,request=Re
 					{next_state,send_response,State}
 				end;
 		_Size ->
-			Req = Req0#http_admin{body=Data},
+			Vars = parse_formdata(binary_to_list(Data)),
+			Req = Req0#http_admin{args=Vars,body=Data},
+			
 			gen_fsm:send_event(self(),run),
 			{next_state,handle_request,State#state{request=Req}}
 	end.
@@ -160,7 +162,16 @@ handle_request(run,#state{request=Request,listen_config=Config}=State) ->
 	gen_fsm:send_event(self(),Result),
 	{next_state,send_response,State}.
 
-send_response({Status,Headers,Body},#state{request=#http_admin{version={V1,V2}}}=StateData) ->
+send_response({Status,Headers0,Body},#state{request=#http_admin{version={V1,V2},path=ReqPath}}=StateData) ->
+	Headers = 
+	case has_header("content-type",Headers0) of
+		true ->
+			Headers0;
+		_ ->
+			MimeType = get_mime_type(string:join(ReqPath,"/")),
+%% 			?ERROR_MSG("Loaded mimetype: ~p~n",[MimeType]),
+			Headers0++MimeType
+	end,
 	BodySize = integer_to_list(iolist_size(Body)),
 	GHdr = [{'Server',"Surrogate http_admin"},{'Content-Length',BodySize}],
 	Response =
@@ -268,12 +279,29 @@ route_request([{PathPrefix,{Module,Fun}}|R], #http_admin{path=Path}=Request,Conf
 % Implement favicon through special -define() in surrogate_favicon.hrl
 % Setup system for assigning mime type based on file extension?
 
+handle_root(["login"],#http_admin{headers=Hdr,has_auth=Auth},_Config) when Auth == true ->
+	Ref = proplists:get_value('Referer',Hdr,"/"),
+	{302,[{"Location",Ref}],<<>>};
+handle_root(["login"],#http_admin{headers=Hdr},_Config) ->
+	Ref = proplists:get_value('Referer',Hdr,"/"),
+	Args = iolist_to_binary([Ref]),
+	{401,[{"WWW-Authenticate","Basic realm=Surrogate admin"}],Args};
+handle_root(["logout"],#http_admin{headers=Hdr},_Config) ->
+	Ref = proplists:get_value('Referer',Hdr,"/"),
+	HTML = io_lib:format("<html><head><script>window.location = ~p;</script></head><body><a href=~p>~s</a></body></html>",
+						 [Ref,Ref,"Back to main page."]),
+	{401,[{"Content-Type","text/html"}],iolist_to_binary(HTML)};
 handle_root(Path,Request,Config) ->
 	case proplists:get_all_values(docroot,Config) of
 		[] ->
 			{404,[],<<"No docroot configured.">>};
 		Roots when is_list(Roots) ->
-			handle_docroot(Roots,Path,Request);
+			case handle_docroot(Roots,Path,Request) of
+				{404,_,_} ->
+					handle_docroot(Roots,Path++["index.html"],Request);  %% If nothing is found try again with /index.html
+				DocRootResponse ->
+					DocRootResponse
+			end;
 		Other ->
 			{404,[],iolist_to_binary(io_lib:format("Not found in: ~p~n",[Other]))}
 	end.
@@ -282,13 +310,13 @@ handle_docroot([],_Path,_Request) ->
 	{404,[],<<"404 Not found.">>};
 handle_docroot([{dir,DocRoot}|R],ReqPath,Request) ->
 	RFile = DocRoot ++ string:join(ReqPath,"/"),
-	?ERROR_MSG("File: ~p~n",[filename:extension(RFile)]),
+%% 	?ERROR_MSG("File: ~p~n",[filename:extension(RFile)]),
 	case file:read_file_info(RFile) of
 		{ok,FileInfo} ->
- 			?ERROR_MSG("Opening file: ~p~n~p~n",[RFile,FileInfo]),
+%%  			?ERROR_MSG("Opening file: ~p~n~p~n",[RFile,FileInfo]),
 			case file:read_file(RFile) of
 				{ok,Binary} ->
-					{200,get_mime_type(RFile)++[],Binary};
+					{200,[],Binary};
 				{error,eisdir} ->
 					handle_docroot(R,ReqPath,Request);
 				OpenErr ->
@@ -304,7 +332,7 @@ handle_docroot([{zip,ZipFile}|R],ReqPath,Request) ->
 			case zip:zip_get(File,Handle) of
 				{ok,{_File,Binary}} ->
 					zip:zip_close(Handle),
-					{200,get_mime_type(File),Binary};
+					{200,[],Binary};
 				{error,file_not_found} ->
 					handle_docroot(R,ReqPath,Request);
 				GetErr ->
@@ -334,11 +362,14 @@ get_mime_type(FileName) ->
 
 get_mime_type2(".html") -> [{"Content-Type","text/html"}];
 get_mime_type2(".conf") -> [{"Content-Type","text/plain"}];
+get_mime_type2(".js") -> [{"Content-Type","application/javascript"}];
+get_mime_type2(".json") -> [{"Content-Type","application/json"}];
+get_mime_type2(".xml") -> [{"Content-Type","application/xml"}];
 get_mime_type2(_) ->
 	[].
 	
 parse_packet({http_request,Method,{abs_path,PathStr},Ver}=Packet) ->
-	?ERROR_MSG("Header: ~p~n",[Packet]),
+%% 	?ERROR_MSG("Header: ~p~n",[Packet]),
 	{ReqStr0,GetArgs} = 
 	case string:chr(PathStr,$?) of
 		ArgIdx when ArgIdx > 0 ->
@@ -349,7 +380,7 @@ parse_packet({http_request,Method,{abs_path,PathStr},Ver}=Packet) ->
 	end,
 	ReqStr = [proxylib:uri_unescape(PathPart) || PathPart <- ReqStr0 ],
 	FormData = parse_formdata(GetArgs),
-	?ERROR_MSG("ReqStr: ~p~nGetArgs: ~p~nFormData: ~p~n",[ReqStr,GetArgs,FormData]),
+%% 	?ERROR_MSG("ReqStr: ~p~nGetArgs: ~p~nFormData: ~p~n",[ReqStr,GetArgs,FormData]),
 	#http_admin{method=Method,path=ReqStr,version=Ver,args=FormData,body= <<>>}.
 
 parse_formdata(GetArgs) ->
@@ -361,12 +392,19 @@ parse_formdata([Arg|R],Acc) ->
 	Pair =
 	case string:chr(Arg,$=) of
 		Idx when Idx > 0 ->
-			{string:substr(Arg,1,Idx-1),string:substr(Arg,Idx+1)};
+			{string:substr(Arg,1,Idx-1),proxylib:uri_unescape(string:substr(Arg,Idx+1))};
 		_ ->
 			{Arg,none}
 	end,
 	?ERROR_MSG("Arg: ~p~n",[Arg]),
 	parse_formdata(R,[Pair|Acc]).
+
+has_header(HeaderStr,HeaderList0) ->
+	HeaderList = [string:to_lower(any_to_list(H)) || {H,_} <- HeaderList0],
+	case lists:filter(fun(X) when X == HeaderStr -> true; (_) -> false end,HeaderList) of
+		[] -> false;
+		_ -> true
+	end.
 
 any_to_list(Atom) when is_atom(Atom) ->
 	atom_to_list(Atom);
