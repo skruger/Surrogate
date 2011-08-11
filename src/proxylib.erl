@@ -289,7 +289,7 @@ uri_unescape(Str) ->
 uri_unescape2([],Acc) ->
 	lists:reverse(Acc);
 uri_unescape2([$% ,H1,H2|R],Acc) ->
-	case catch list_to_integer([H1,H2],16) of
+	case catch (list_to_integer([H1])*16+list_to_integer([H2])) of  %% list_to_integer(List,Size) not supported in older versions
 		C when is_integer(C) ->
 			uri_unescape2(R,[C|Acc]);
 		_ ->
