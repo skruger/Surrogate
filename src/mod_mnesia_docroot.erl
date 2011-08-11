@@ -8,6 +8,7 @@
 %%
 
 -include("surrogate.hrl").
+-include_lib("kernel/include/file.hrl").
 -include_lib("stdlib/include/zip.hrl").
 
 -behaviour(proxy_mod).

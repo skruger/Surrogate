@@ -82,12 +82,12 @@ init(State) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 start_request(read, #state{client_sock=CSock}=StateData) ->
-	case gen_socket:recv(CSock,0,10000) of
+	case catch gen_socket:recv(CSock,0,10000) of
 		{ok,Data} ->
 			gen_fsm:send_event(self(),{data,Data}),
 			{next_state, parse_request, StateData};
 		Err ->
-			?ERROR_MSG("Error in start_request(): ~p~n",[Err]),
+			?ERROR_MSG("Error in ~p:start_request(): ~p~n",[?MODULE,Err]),
 			{stop,normal,StateData}
 	end.
 
@@ -163,7 +163,7 @@ handle_request(run,#state{request=Request,listen_config=Config}=State) ->
 	{next_state,send_response,State}.
 
 send_response({Status,Headers0,Body},#state{request=#http_admin{version={V1,V2},path=ReqPath}}=StateData) ->
-	Headers = 
+	Headers1 = 
 	case has_header("content-type",Headers0) of
 		true ->
 			Headers0;
@@ -171,6 +171,13 @@ send_response({Status,Headers0,Body},#state{request=#http_admin{version={V1,V2},
 			MimeType = get_mime_type(string:join(ReqPath,"/")),
 %% 			?ERROR_MSG("Loaded mimetype: ~p~n",[MimeType]),
 			Headers0++MimeType
+	end,
+	Headers =
+	case has_header("connection",Headers1) of
+		true ->
+			Headers1;
+		_ ->
+			Headers1++[{"Connection","close"}]
 	end,
 	BodySize = integer_to_list(iolist_size(Body)),
 	GHdr = [{'Server',"Surrogate http_admin"},{'Content-Length',BodySize}],

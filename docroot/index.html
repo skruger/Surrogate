@@ -1,31 +1,71 @@
 <html>
 <head>
 <title>Surrogate Admin</title>
-<script src="http://ajax.googleapis.com/ajax/libs/dojo/1.6.0/dojo/dojo.xd.js" type="text/javascript" djConfig="parseOnLoad: true"></script>
+<script src="http://ajax.googleapis.com/ajax/libs/dojo/1.6.0/dojo/dojo.xd.js" type="text/javascript" data-dojo-config="parseOnLoad: true"></script>
+<script type="text/javascript" src="/vipPane.js"></script>
 <script type="text/javascript" src="/listenerPane.js"></script>
 <script type="text/javascript" src="/surrogate.js"></script>
 <link rel="stylesheet" type="text/css" href="http://ajax.googleapis.com/ajax/libs/dojo/1.6/dijit/themes/soria/soria.css"/>
 <link rel="stylesheet" type="text/css" href="http://ajax.googleapis.com/ajax/libs/dojo/1.6/dojox/grid/resources/Grid.css"/>
 <link rel="stylesheet" type="text/css" href="http://ajax.googleapis.com/ajax/libs/dojo/1.6/dojox/grid/resources/soriaGrid.css"/>
 <style type="text/css">
-#borderContainer { width: 100%; height: 100%;}
+body, html { width:100%; height:100%; margin:0; padding:0; overflow:hidden; }
+#appLayout { width: 100%; height: 100%;}
 #header ul li { display: inline; list-style-type: none; padding-right: 30px; } 
 </style>
 </head>
 <body class="soria">
-<div id="refheader" style="visibility:hidden;">
-	<h2>Surrogate Administration</h2>
-	<ul>
-		<li><a href="/login">Login</a></li>
-		<li><a href="/logout">Logout</a></li>
-	</ul>
-	
-</div>
-
 <div style="width:100%; height: 100%;">
+	<div id="appLayout" data-dojo-type="dijit.layout.BorderContainer">
+		<div id="header"
+				data-dojo-type="dijit.layout.ContentPane"
+				data-dojo-props="region: 'top'">
+			<h2>Surrogate Administration</h2>
+			<ul>
+				<li><a href="/login">Login</a></li>
+				<li><a href="/logout">Logout</a></li>
+			</ul>
+		</div>
+		<div id="centerPane" 
+				data-dojo-type="dijit.layout.TabContainer"
+				data-dojo-props="region: 'center'">
+			<div id="vipPane"
+					data-dojo-type="dijit.layout.BorderContainer"
+					data-dojo-props="title: 'VIPs'">
+				<div id="vipGrid"></div>
+				<div id="vipFooter"
+						style="text-align: right;"
+						data-dojo-type="dijit.layout.ContentPane"
+						data-dojo-props="region:'bottom'">
+					New Vip: <input type="text" id="vipAddressAdd"/>
+					<button id="vipAdd">Add VIP</button>
+				</div>
+			</div>
+			
+			<div id="listenPane"
+					data-dojo-type="dijit.layout.BorderContainer"
+					data-dojo-props="title: 'Listeners'">
+				<div id="listenFooter"
+						style="text-align: right;"
+						data-dojo-type="dijit.layout.ContentPane"
+						data-dojo-props="region: 'bottom'">
+					<button id="listenAdd">Add Listener</button>
+				</div>
+				<div id="listenGrid">
+				</div>
+				
+			</div>
+			<div id="poolPane"
+					data-dojo-type="dijit.layout.BorderContainer"
+					data-dojo-props="title: 'Pools'">
+				<div id="poolContent"></div>
+			</div>
+		</div>
+	</div>
 	
-	<div id="maincontainer"></div>
+	
 </div>
+<!-- 	<div id="maincontainer"></div> -->
 
 </body>
 </html>

@@ -22,11 +22,71 @@
 %%
 
 proxy_mod_start(_Opts) ->
+	?ERROR_MSG("Staring ~p~n",[?MODULE]),
 	proxy_protocol_http_admin:register_module(?MODULE,?MODULE,http_api).
 
 proxy_mod_stop(_Opts) ->
 	proxy_protocol_http_admin:unregister_module(?MODULE).
 
+
+http_api(["vip"],#http_admin{body=JsonBin,has_auth=Auth},_Conf) when Auth == true ->
+	try
+		case mochijson2:decode(JsonBin) of
+			{struct,Args} ->
+				case proplists:get_value(<<"vip">>,Args,none) of
+					none ->
+ 						erlang:error({json_error,io_lib:format("POST Json did not contain a 'vip' entry. (~p)",[Args])});
+					VipBin ->
+						Vip = {ip,proxylib:inet_parse(binary_to_list(VipBin))},
+						cluster_vip_manager:add_vip(Vip),
+						cluster_vip_manager:disable_vip(Vip),
+						StatusMsg = io_lib:format("Posted: ~p~n",[Vip]),
+						JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
+						{200,[],iolist_to_binary(mochijson2:encode(JsonOut))}
+				end;
+			Other ->
+				?ERROR_MSG("Unexpected decode result: ~n~p~n",[Other]),
+				erlang:error({json_error,io_lib:format("Json decode error: ~p",[Other])})
+		end
+	catch
+		_:{ErrName,ErrTup} when is_tuple(ErrTup) ->
+			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
+								  {"error",iolist_to_binary(io_lib:format("~p",[ErrTup]))}]},
+			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))};
+		_:{ErrName,ErrBin} ->
+			?ERROR_MSG("~p / ~p",[ErrName,ErrBin]),
+			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
+								  {"error",iolist_to_binary(ErrBin)}]},
+			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))};
+		_:Error ->
+			?ERROR_MSG("Update error (~p): ~p",[self(),Error]),
+			EStr = io_lib:format("Update error (~p): ~p",[self(),Error]),
+			JsonOutErr = {struct,[{"status",<<"error">>},{"error",iolist_to_binary(EStr)}]},
+			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))}
+	end;
+http_api(["vip","delete",IP],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
+	Vip = {ip,proxylib:inet_parse(IP)},
+	cluster_vip_manager:disable_vip(Vip),
+	StatusMsg = "Disabled VIP",
+	JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
+	{200,[],iolist_to_binary(mochijson2:encode(JsonOut))};
+http_api(["vips.json"],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
+	try
+		VipList0 = cluster_vip_manager:get_vip_list(),
+		VipList = lists:map(fun({IP,Stat,Nodes}) ->
+									{list_to_binary(proxylib:format_inet(IP)),
+									 list_to_binary(atom_to_list(Stat)),
+									 [list_to_binary(atom_to_list(H)) || H <- Nodes]};
+							   (_) -> error end,VipList0),
+		Vips = [{struct,[{"address",IP},{"status",Status},{"nodes",Nodes}]} || {IP,Status,Nodes} <- VipList],
+		?ERROR_MSG("VipList: ~p~nVips: ~p~n",[VipList,Vips]),
+		JsonOut = {struct,[{"items",lists:sort(Vips)}]},
+		{200,[],iolist_to_binary(mochijson2:encode(JsonOut))}
+	catch
+		_:VipErr ->
+			?ERROR_MSG("Error getting vip list: ~p~n",[VipErr]),
+			{500,[],<<"Internal Server Error">>}
+	end;
 http_api(["listener","delete",Name],#http_admin{body=Json,has_auth=Auth}=Request,_Conf) when Auth == true ->
 	R = mnesia:dirty_delete(cluster_listener,list_to_atom(Name)),
 	?ERROR_MSG("Delete result: ~p~n",[R]),
@@ -73,8 +133,9 @@ http_api(["listeners.json"],Request,_Conf) when Request#http_admin.has_auth == t
 	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mochijson2:encode(JsonListeners))};
 http_api(["listeners.json"],_Request,_Conf) ->
 	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mochijson2:encode({struct,[{"items",[]}]}))};
-http_api(_Path,_Request,_Conf) ->
-	{404,[],<<"Not found in mod_cluster.">>}.
+http_api(Path,_Request,_Conf) ->
+	Err = io_lib:format("Not found in ~p: ~p~n",[?MODULE,Path]),
+	{404,[{'Content-type',"text/plain"}],iolist_to_binary(Err)}.
 
 
 %%
@@ -122,12 +183,12 @@ listener_json_record([{<<"config_list">>,Conf0}|R],Rec) ->
 					listener_json_record(R,Rec#cluster_listener{options=Term});
 				ErrTerm ->
 					?ERROR_MSG("No terms found in conf: ~p~n~p~n",[ErrTerm,Tokens]),
-					error({config_list,io_lib:format("Error in config_list: ~p",[ErrTerm])}),
+					erlang:error({config_list,io_lib:format("Error in config_list: ~p",[ErrTerm])}),
 					listener_json_record(R,Rec)
 			end;
 		ErrTok ->
 			?ERROR_MSG("No tokens found in Conf: ~p~n~p~n",[ErrTok,Conf]),
-			error({config_list,io_lib:format("Error in config_list: ~p",[ErrTok])}),
+			erlang:error({config_list,io_lib:format("Error in config_list: ~p",[ErrTok])}),
 			listener_json_record(R,Rec)
 	end;
 listener_json_record([Other|R],Rec) ->

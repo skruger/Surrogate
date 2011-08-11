@@ -33,19 +33,7 @@ behaviour_info(_) ->
 
 start_link(Name,Mod,Args) ->
 	?DEBUG_MSG("~p ~p ~p~n",[Name,?MODULE,[Mod,Args]]),
-	case gen_server:start_link({local,Name},?MODULE,[Mod,Args],[]) of
-		{ok,Pid} = OK ->
-			case Name of
-				{_,Proc} when is_atom(Proc) ->
-					register(Proc,Pid);
-				_ -> 
-					?WARN_MSG("Could not register process name in gen_balancer.  Invalid name returned from proxylib:get_pool_process()~n~p~n",[Name]),
-					ok
-			end,
-			OK;
-		Err ->
-			Err
-	end.
+	gen_server:start_link({local,Name},?MODULE,[Mod,Args],[]).
 
 start(Mod,Args) ->
 	gen_server:start(Mod,[Mod,Args],[]).

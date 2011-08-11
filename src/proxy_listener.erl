@@ -58,7 +58,7 @@ init({listen_plain,{ip,IP0},Port,Props}=L) ->
 			inet ->
 				[Bind,binary,{active,false},inet,{reuseaddr,true}];
 			inet6 ->
-				[Bind,binary,{active,false},inet6]
+				[Bind,binary,{active,false},inet6,{reuseaddr,true}]
 		end,
 	?INFO_MSG("~p PLAIN listening: ~p~ngen_tcp:listen(~p,~p)~n",[?MODULE,L,Port,Opts]),
 	case gen_tcp:listen(Port,Opts) of

@@ -1,9 +1,9 @@
 
 
-
 function listenerPane(){
 	var listenEditDialog;
-	var listenerURL = "/module/mod_cluster_admin/listeners.json"
+	var listenerURL = "/module/mod_cluster_admin/listeners.json";
+	
 	function refreshGrid(grid){
 		grid.setStore(new dojo.data.ItemFileWriteStore({url: listenerURL}),{name: "*"});
 	}
@@ -30,10 +30,9 @@ function listenerPane(){
 	editContainer.startup();
 	listenEditDialog = new dijit.Dialog({title:"<b id='listenEditHeader'>Add Listener</b>",content: editContainer,style: "width: 650px;height: 450px;"});
 	listenEditDialog.startup();
-
-	var listenGridButtons = "";
-	listenGridButtons = "<button id='listenAdd'>Add Listner</button>";
-
+	
+	var selitem;
+	
 	listenGrid = new dojox.grid.DataGrid({
 		region:"center",
 		store: new dojo.data.ItemFileWriteStore({url: listenerURL}),
@@ -47,8 +46,10 @@ function listenerPane(){
 		            ],
 		selectionMode: "single",
 		onCellFocus: function(inCell,inRowIndex){
+			selitem = this.getItem(inRowIndex);
+		},
+		onRowDblClick: function(e) {
 			dojo.byId("listenEditDeleteCheck").checked = false;
-			var selitem = this.getItem(inRowIndex);
 			dojo.byId("listenEditHeader").innerHTML="editing: "+selitem.name[0];
 //			listenEditDialog.set(title,selitem.name[0]);
 			dojo.byId("listenEditName").value=selitem.name[0];
@@ -85,28 +86,12 @@ function listenerPane(){
 			}
 			listenEditDialog.show();
 		}
-	});	
+	},dojo.byId("listenGrid"));	
+	listenGrid.startup();
 	
-	var listenContainer = new dijit.layout.BorderContainer({title:"Listeners",style: "height:100%;width:100%"});
-	listenContainer.addChild(listenGrid);
-	var listenGridButtonPane = new dijit.layout.ContentPane({region:"bottom",style: "width: 100%;text-align:right;",content: listenGridButtons});
-	listenGridButtonPane.onShow = function(){ 
-			dojo.byId("listenEditHeader").innerHTML="Add Listener";
-			dojo.byId("listenAdd").onclick = function(){
-			dojo.byId("listenEditName").value= "new";
-			dojo.byId("listenEditType").value= "listen_plain";
-			dojo.byId("listenEditAddress").value= "127.0.0.1";
-			dojo.byId("listenEditPort").value= "8080";
-			dojo.byId("listenEditConfig").value= "[inet,{protocol,http},{stream_filters,[]}]";
-			dojo.byId("listenEditDelete").visible = false;
-			listenEditDialog.show();
-		}
+	dojo.byId("listenEditCancel").onclick = function(){
+		listenEditDialog.hide();
 	}
-
-	listenGridButtonPane.startup();
-	listenContainer.addChild(listenGridButtonPane);
-	listenContainer.startup();
-	
 	dojo.byId("listenEditSave").onclick = function(){
 		var update = {name: dojo.byId("listenEditName").value,
 				listen_type: dojo.byId("listenEditType").value,
@@ -135,5 +120,14 @@ function listenerPane(){
 		dojo.xhrPut(xhrArgs);
 		refreshGrid(listenGrid);
 	}
-	return listenContainer;
+	dojo.byId("listenAdd").onclick = function(){
+		dojo.byId("listenEditHeader").innerHTML="Add Listener";
+		dojo.byId("listenEditName").value= "new";
+		dojo.byId("listenEditType").value= "listen_plain";
+		dojo.byId("listenEditAddress").value= "127.0.0.1";
+		dojo.byId("listenEditPort").value= "8080";
+		dojo.byId("listenEditConfig").value= "[inet,{protocol,http},{stream_filters,[]}]";
+		dojo.byId("listenEditDelete").visible = false;
+		listenEditDialog.show();
+	}
 }
