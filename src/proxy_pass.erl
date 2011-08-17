@@ -142,7 +142,7 @@ client_send_11(request,State) ->
  		_:{error,closed} -> {stop,normal,State};
 		_:{killed,_} -> {stop,normal,State};
  		_:ErrCatch ->
- 			?ERROR_MSG("Error receiving headers: ~p (Keepalive: ~p)~n",[ErrCatch,State#proxy_pass.keepalive]),
+ 			?ERROR_MSG("Error receiving headers: ~p (Keepalive: ~p)~n~p~n",[ErrCatch,State#proxy_pass.keepalive,erlang:get_stacktrace()]),
  			{stop,normal,State}
 	end;
 client_send_11({request_header,#header_block{expect='100-continue'}=_ReqHdr,_RequestSize}=_R,State) ->
