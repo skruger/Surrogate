@@ -40,16 +40,17 @@ process_hook(_Pid,request,{request_header,ReqHdr,RequestSize},PPC) ->
 	HBlock2 = proxylib:remove_headers(RemHdrs,HBlock1),
 	HBlock3 = proxylib:append_headers(AddHdrs,HBlock2),
 	ReqRec = ReqHdr#header_block.request,
+	{VerMajor,VerMinor} = ReqRec#request_rec.protocol,
 	HBlock4 = 
 		case proplists:get_value(via,Cfg,true) of
 			true ->
-				{VerMajor,VerMinor} = ReqRec#request_rec.protocol,
 				{ok,Hostname} = inet:gethostname(),
 				HBlock3++[{'Via',io_lib:format("HTTP/~p.~p ~s",[VerMajor,VerMinor,Hostname])}];
+			HostStr when is_list(HostStr) ->
+				HBlock3++[{'Via',io_lib:format("HTTP/~p.~p ~s",[VerMajor,VerMinor,HostStr])}];
 			_ ->
 				HBlock3
 		end,
-%% 	?ERROR_MSG("Almost done.~p~n",[ReqHdr]),
 	{request_header,ReqHdr#header_block{headers=HBlock4},RequestSize};
 process_hook(_Ref,_Type,Data,_PPC) ->
 	Data.
