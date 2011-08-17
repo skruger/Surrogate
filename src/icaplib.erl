@@ -15,10 +15,10 @@
 %%
 
 http_request_headers(ReqRec,Headers) ->
-	HttpReq = lists:flatten(io_lib:format("~s ~s ~s\r\n~s",
-										  [ReqRec#request_rec.method,ReqRec#request_rec.path,ReqRec#request_rec.protocol,
-										   proxylib:combine_headers(Headers)])),
-	list_to_binary(HttpReq).
+	HttpReq = io_lib:format("~s ~s ~s\r\n~s",
+							[ReqRec#request_rec.method,ReqRec#request_rec.path,ReqRec#request_rec.protocol,
+							 proxylib:combine_headers(Headers)]),
+	iolist_to_binary(HttpReq).
 
 body_chunks(<<>>,<<>>) -> <<>>;
 body_chunks(Data,Acc) ->

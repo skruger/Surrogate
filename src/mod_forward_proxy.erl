@@ -53,7 +53,6 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
-%% 	HDict = proxylib:header2dict(Hdr#header_block.headers),
 	%% This should try the Request-URI when absoluteURI is given in HTTP proxy mode (RFC 2616 5.1.2)
 	case proplists:get_value('Host',Hdr#header_block.headers,none) of
 		HostStr when is_list(HostStr) ->

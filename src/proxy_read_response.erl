@@ -42,15 +42,13 @@ start(Sock,Request) ->
 	ParentPid = self(),
 %% 	?DEBUG_MSG("~p started by: ~p~n",[?MODULE,ParentPid]),
 	try
-		case header_parse:get_headers(Sock,response) of
-			Hdr ->
-				case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body,request=Request}],[]) of
-					{ok,RPid} ->
-						gen_socket:controlling_process(Sock,RPid),
-						{?MODULE,RPid};
-					Err ->
-						Err
-				end
+		Hdr = header_parse:decode_headers(Sock),
+		case gen_fsm:start(?MODULE,[#state{parent=ParentPid,sock=Sock,headers=Hdr,buff=Hdr#header_block.body,request=Request}],[]) of
+			{ok,RPid} ->
+				gen_socket:controlling_process(Sock,RPid),
+				{?MODULE,RPid};
+			Err ->
+				Err
 		end
 	catch
 		_:CErr ->
@@ -81,16 +79,16 @@ init([State]) ->
 	{NextState,State1} =
 	case proxylib:method_has_data(State#state.request,State#state.headers) of
 		true ->
-			Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
-			case dict:find("transfer-encoding",Dict) of
+			Dict = dict:from_list((State#state.headers)#header_block.headers),
+			case dict:find('Transfer-Encoding',Dict) of
 				{ok,"chunked"} ->
 					{send_headers,State#state{size=chunked,bytes_sent=0}};
 				NoChunk ->
-					case dict:find("connection",Dict) of
+					case dict:find('Connection',Dict) of
 						{ok,"close"} ->
 							{send_headers,State#state{size=close,bytes_sent=0}};
 						NoConn ->
-							case dict:find("content-length",Dict) of
+							case dict:find('Content-Length',Dict) of
 								{ok,LenStr} ->
 									{Len,_} = string:to_integer(LenStr),
 									{send_headers,State#state{size=Len,bytes_sent=0}};
@@ -103,23 +101,22 @@ init([State]) ->
 		_ ->
 			{send_headers,State#state{size=0,bytes_sent=0}}
 	end,
-	Dict0 = proxylib:header2dict((State1#state.headers)#header_block.headers),
+	Dict0 = dict:from_list((State1#state.headers)#header_block.headers),
 	HBlock0 = (State1#state.headers),
 	{Encoding,Headers} =
-		case dict:find("content-encoding",Dict0) of
+		case dict:find('Content-Encoding',Dict0) of
  			{ok,"gzip"} ->
 				case State1#state.size of
 					Vary when (Vary == close) or (Vary == chunked )->
-						GZHdr = proxylib:remove_headers(["content-encoding","content-length"],HBlock0#header_block.headers),
+						GZHdr = proxylib:remove_headers(['Content-Encoding','Content-Length'],HBlock0#header_block.headers),
 						{gzip,GZHdr};
-					ResLen when is_integer(ResLen) and ((HBlock0#header_block.response)#response_rec.protocol == "HTTP/1.1") ->
- 						GZHdr = proxylib:remove_headers(["content-encoding","content-length","connection","transfer-encoding"],HBlock0#header_block.headers),
-						{gzip,proxylib:append_header("Transfer-Encoding: chunked",GZHdr)};
-					ResLen when is_integer(ResLen) and ((HBlock0#header_block.response)#response_rec.protocol == "HTTP/1.0") ->
- 						GZHdr = proxylib:remove_headers(["content-encoding","content-length","connection","transfer-encoding"],HBlock0#header_block.headers),
-						{gzip,proxylib:append_header("Connection: Close",GZHdr)}
+					ResLen when is_integer(ResLen) and ((HBlock0#header_block.response)#response_rec.protocol == {1,1}) ->
+ 						GZHdr = proxylib:remove_headers(['Content-Encoding','Content-Length','Connection','Transfer-Encoding'],HBlock0#header_block.headers),
+						{gzip,GZHdr++[{'Transfer-Encoding',"chunked"}]};
+					ResLen when is_integer(ResLen) and ((HBlock0#header_block.response)#response_rec.protocol == {1,0}) ->
+ 						GZHdr = proxylib:remove_headers(['Content-Encoding','Content-Length','Connection','Transfer-Encoding'],HBlock0#header_block.headers),
+						{gzip,GZHdr++[{'Connection',"close"}]}
 				end;
-%%   				{gzip,proxylib:remove_headers(["content-encoding"],HBlock0#header_block.headers)};
 			{ok,Other} ->
 				?WARN_MSG("Unsupported content-encoding: ~p~n",[Other]),
 				{plain,HBlock0#header_block.headers};
@@ -141,12 +138,11 @@ send_headers(run,State) ->
 %% 	?DEBUG_MSG("Sent headers to ~p~n",[State#state.parent]),
 	Protocol = ((State#state.headers)#header_block.response)#response_rec.protocol,
 	ResponseSize = case State#state.encoding of
-			   gzip when (Protocol == "HTTP/1.0") or (State#state.size == close) -> close;
-			   gzip when (Protocol == "HTTP/1.1") -> chunked;
+			   gzip when (Protocol == {1,0}) or (State#state.size == close) -> close;
+			   gzip when (Protocol == {1,1}) -> chunked;
 			   _ -> State#state.size
 		   end,
 	State#state.parent ! {response_header,State#state.headers,ResponseSize},
-%% 	Dict = proxylib:header2dict((State#state.headers)#header_block.headers),
 	case State#state.size of
 		chunked ->
  			?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Starting in chunked mode.",[])),
@@ -173,7 +169,6 @@ read_response(check_data,State) when State#state.buff == <<>> ->
 	case gen_socket:recv(State#state.sock,0) of
 		{ok,Data} ->
 			send_response_data(State,Data),
-%% 			State#state.parent ! {response_data,Data},
 			Sent = trunc(bit_size(Data)/8) + State#state.bytes_sent,
 			{next_state,read_response,State#state{bytes_sent=Sent}};
 		{error,closed} ->
@@ -187,7 +182,6 @@ read_response(check_data,State) when State#state.buff == <<>> ->
 read_response(check_data,State) ->
 %% 	?DEBUG_MSG("Sending existing data.~n",[]),
 	send_response_data(State,State#state.buff),
-%% 	State#state.parent ! {response_data,State#state.buff},
 	Sent = trunc(bit_size(State#state.buff)/8) + State#state.bytes_sent,
 	{next_state,read_response,State#state{buff = <<>>,bytes_sent=Sent}};
 read_response({gen_socket,_,<<Data>>},State) ->
@@ -220,7 +214,6 @@ read_chunked_response(check_data,State) ->
 					{stop,normal,State}
 			end;
 		0 ->
-%% 			?INFO_MSG("Strip leading \\r\\n.~n",[]),
 			<<"\r\n",Rest/binary>> = State#state.buff,
 			gen_fsm:send_event(self(),check_data),
 			{next_state,read_chunked_response,State#state{buff=Rest}};
@@ -239,7 +232,6 @@ read_chunked_response(check_data,State) ->
 					<<SendChunk:Len/binary,R/binary>> = Chunk,
 					BytesSent = CLen + State#state.bytes_sent,
 					send_response_data(State,SendChunk),
-%% 					State#state.parent ! {response_data,SendChunk},
  					?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Got chunk:~n~p~n(~p)~n Leftover:~n~p~n",[SendChunk,trunc(bit_size(SendChunk)/8),R])),
 					{next_state,read_chunked_response,State#state{buff=R,bytes_sent=BytesSent}};
 				_ ->

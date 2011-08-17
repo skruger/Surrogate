@@ -40,8 +40,8 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
-	HDict = proxylib:header2dict(Hdr#header_block.headers),
-	case dict:find("host",HDict) of
+	HDict = dict:from_list(Hdr#header_block.headers),
+	case dict:find('Host',HDict) of
 		{ok,HostStr} ->
 			{host,Host,Port} = proxylib:parse_host(HostStr,80),
 			case get_pool_by_host(Host) of

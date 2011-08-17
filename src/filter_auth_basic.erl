@@ -23,8 +23,8 @@ start_instance() ->
 process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_pass{config=Conf}=_PPC) ->
 	?ERROR_MSG("ProxyPass: ~p~n",[Conf]),
 	AuthRequestResponse = {request_filter_response,<<"HTTP/1.1 407 Auth required\r\nProxy-Authenticate: Basic realm=\"Surrogate\"\r\nConnection: close\r\n\r\n">>},
-	Dict = proxylib:header2dict(ReqHdr#header_block.headers),
-	case dict:find("proxy-authorization",Dict) of
+	Dict = dict:from_list(ReqHdr#header_block.headers),
+	case dict:find('Proxy-Authorization',Dict) of
 		{ok,"Basic "++AuthStr} ->
 			Auth2 = binary_to_list(base64:decode(AuthStr)),
 			case string:chr(Auth2,$:) of

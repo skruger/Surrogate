@@ -170,9 +170,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 			case proplists:get_value(enable_gzip,State#proxy_pass.config,false) of
 				false -> Hdr0;
 				_EnableGzip ->
-%% 					Hdr0++[{'Accept-Encoding',"gzip"}]
-					?ERROR_MSG("Gzip encoding is currently broken.~n",[]),
-					Hdr0
+					Hdr0++[{'Accept-Encoding',"gzip"}]
 			end,
 			Hdr = Hdr1,
 			Req=ReqHdr#header_block.request,
@@ -180,7 +178,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 			ReqStr = io_lib:format("~s ~s HTTP/~p.~p\r\n",[Req#request_rec.method,Req#request_rec.path,ProtoMajor,ProtoMinor]),
 			ReqHeaders = [ReqStr,proxylib:build_header_list(Hdr)],
 			RequestHeaders = iolist_to_binary(ReqHeaders),
-			?ERROR_MSG("RequestHeaders:~n~p~n",[RequestHeaders]),
+%% 			?ERROR_MSG("RequestHeaders:~n~p~n",[RequestHeaders]),
 			case proxy_protocol:tcp_connect(State#proxy_pass.reverse_proxy_host) of
 				{ok,SSock} ->
 					gen_socket:send(SSock,RequestHeaders),
@@ -225,10 +223,12 @@ server_recv_11(response,State) ->
 	end;
 server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	?ACCESS_LOG(200,(State#proxy_pass.request)#header_block.rstr,State#proxy_pass.userinfo,ResHdr#header_block.rstr),
-	RHdr = ResHdr#header_block.headers,
-	ResponseHeaders = [[ResHdr#header_block.rstr|"\r\n"]|proxylib:combine_headers(RHdr)],
+	#response_rec{code=Code,protocol={VerMajor,VerMinor},text=StatusStr} = ResHdr#header_block.response,
+	ResponseStr = io_lib:format("HTTP/~p.~p ~p ~s\r\n",[VerMajor,VerMinor,Code,StatusStr]),
+	ResHeaders = [ResponseStr,proxylib:build_header_list(ResHdr#header_block.headers)],
+	ResponseHeaders = iolist_to_binary(ResHeaders),
+%% 	?ERROR_MSG("ResponseHeaders:~n~p~n",[ResponseHeaders]),
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
-%% 	?DEBUG_MSG("Headers sent to client. (~p)",[ResponseSize]),
 	case ResponseSize of
 		0 ->
 			gen_fsm:send_event(self(),next),

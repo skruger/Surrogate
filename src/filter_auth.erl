@@ -24,10 +24,10 @@ start_instance() ->
 process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_pass{config=PConf}=_PPC) ->
 %% 	?ERROR_MSG("ProxyPass: ~p~n",[PConf]),
 	Conf = proplists:get_value(?MODULE,PConf,[]),
-	Dict = proxylib:header2dict(ReqHdr#header_block.headers),
+	Dict = dict:from_list(ReqHdr#header_block.headers),
 	{Mode,AuthHdr} = case proplists:get_value(mode,Conf,proxy) of
-				  proxy -> {proxy,"proxy-authorization"};
-				  _ -> {www,"authorization"}
+				  proxy -> {proxy,'Proxy-Authorization'};
+				  _ -> {www,'Authorization'}
 			  end,
 	AuthRequestResponse = {request_filter_response,proxy_auth_request('basic',Mode,"Surrogate")},
 	case dict:find(AuthHdr,Dict) of

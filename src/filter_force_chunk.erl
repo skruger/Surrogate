@@ -27,16 +27,16 @@ process_hook(_,response,{response_header,_,close}=Data,_PPC) ->
 process_hook(_,response,{response_header,_,0}=Header,_PPC) ->
 	Header;
 process_hook(_,response,{response_header,Hdr,_Length}=Header,_PPC) ->
-	Dict = proxylib:header2dict(Hdr#header_block.headers),
-	case dict:find("content-length",Dict) of
+	Dict = dict:from_list(Hdr#header_block.headers),
+	case dict:find('Content-Length',Dict) of
 		{ok,_} ->
 			case (Hdr#header_block.response)#response_rec.protocol of
-				"HTTP/1.1" ->
-					NewHeaders = proxylib:replace_header("content-length","Transfer-Encoding: chunked",Hdr#header_block.headers),
+				{1,1} ->
+					NewHeaders = proxylib:remove_header('Content-Length',Hdr#header_block.headers)++[{'Transfer-Encoding',"chunked"}],
 					{response_header,Hdr#header_block{headers=NewHeaders},chunked};
-				"HTTP/1.0" ->
-					NewHeaders0 = proxylib:remove_headers(["connection","content-length"],Hdr#header_block.headers),
-					NewHeaders2 = proxylib:append_header("Connection: close",NewHeaders0),
+				{1,0} ->
+					NewHeaders0 = proxylib:remove_headers(['Connection','Content-Length'],Hdr#header_block.headers),
+					NewHeaders2 = NewHeaders0++[{'Connection',"close"}],
 					{response_header,Hdr#header_block{headers=NewHeaders2},close}
 			end;
 		_ -> 

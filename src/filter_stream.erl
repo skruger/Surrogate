@@ -77,7 +77,8 @@ process_hooks(Hook,Data,[{FMod,FPid}=F|R],OrigData,ProxyPassRecord) ->
 		end of
 		error ->
 			% alternative to error is stopping all processing and returning OrigData
-			?DEBUG_MSG("Error? ~p~n",[FMod]),
+			?DEBUG_MSG("Error? ~p~n~p~n~p:process_hook(~p,~p,~p,~p)",[FMod,erlang:get_stacktrace(),
+																	  FMod,FPid,Hook,Data,ProxyPassRecord]),
 			process_hooks(Hook,Data,R,OrigData,ProxyPassRecord);
 		delay -> delay;
 		RetData ->
