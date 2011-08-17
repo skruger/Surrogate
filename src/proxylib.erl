@@ -10,7 +10,7 @@
 %%
 %% Exported Functions
 %%
--export([header2dict/1,parse_host/2,parse_request/1,parse_response/1,parse_connect/1,combine_headers/1,split_headers/1,find_binary_pattern/2,method_has_data/2]).
+-export([header2dict/1,parse_host/2,parse_request/1,parse_response/1,parse_connect/1,combine_headers/1,build_header_list/1,split_headers/1,find_binary_pattern/2,method_has_data/2]).
 
 %% -export([send/2,setopts/2]).
 
@@ -23,6 +23,7 @@
 %%
 
 header2dict(Hdr) ->
+	?ERROR_MSG("header2dict() is deprecated!~n~p~n",[erlang:get_stacktrace()]),
 	header2dict(Hdr,[]).
 
 header2dict([],List)->
@@ -35,24 +36,30 @@ header2dict([Hdr|R],Acc)->
 			header2dict(R,[{string:to_lower(Key),Val}|Acc])
 	end.
 
+
+
 remove_headers([],Hdr) ->
 	Hdr;
 remove_headers([H|R],Hdr) ->
 	remove_headers(R,remove_header(H,Hdr)).
 
 remove_header(Name,Hdr) ->
-	remove_header(Name,Hdr,[]).
-remove_header(_Name,[],Acc) ->
-	lists:reverse(Acc);
-remove_header(Name,[Hdr|R],Acc) ->
-	Idx = string:str(Hdr,":"),
-	case string:to_lower(string:sub_string(Hdr,1,Idx-1)) of
-		Name ->
-%% 			remove_header(Name,R,Acc);
-			lists:reverse(Acc)++R;
-		_ ->
-			remove_header(Name,R,[Hdr|Acc])
-	end.
+	lists:filter(fun({N,_}) when N == Name -> false;
+					(_) -> true end,Hdr).
+
+%% remove_header(Name,Hdr) ->
+%% 	remove_header(Name,Hdr,[]).
+%% remove_header(_Name,[],Acc) ->
+%% 	lists:reverse(Acc);
+%% remove_header(Name,[Hdr|R],Acc) ->
+%% 	Idx = string:str(Hdr,":"),
+%% 	case string:to_lower(string:sub_string(Hdr,1,Idx-1)) of
+%% 		Name ->
+%% %% 			remove_header(Name,R,Acc);
+%% 			lists:reverse(Acc)++R;
+%% 		_ ->
+%% 			remove_header(Name,R,[Hdr|Acc])
+%% 	end.
 
 replace_header(Name,NewHdr,HdrBlock) ->
 	replace_header(Name,NewHdr,HdrBlock,[]).
@@ -83,6 +90,20 @@ parse_host(Host,DefPort) ->
 			{Port,_} = string:to_integer(string:sub_string(Host,Idx+1)),
 			{host,string:sub_string(Host,1,Idx-1),Port}
 	end.
+
+build_header_list(Headers) ->
+	build_header_list(Headers,[]).
+
+build_header_list([],Acc) ->
+	[lists:reverse(Acc),"\r\n"];
+build_header_list([{Hdr,Val}|R],Acc) when is_atom(Hdr) ->
+	build_header_list([{atom_to_list(Hdr),Val}|R],Acc);
+build_header_list([{Hdr,Val}|R],Acc) ->
+	HdrLine = [Hdr,": ",Val,"\r\n"],
+	build_header_list(R,[HdrLine|Acc]);
+build_header_list([Hdr|R],Acc) ->
+	?WARN_MSG("Bad header: ~p~n",Hdr),
+	build_header_list(R,Acc).
 
 combine_headers(Headers) ->
 	combine_headers(lists:reverse(Headers),[]).
@@ -165,7 +186,7 @@ parse_response(Res) ->
 
 method_has_data(Req,Res) ->
 	case Req#header_block.request of
-		#request_rec{method="HEAD"} ->
+		#request_rec{method='HEAD'} ->
 			false;
 		_ ->
 %% 			?DEBUG_MSG("method_has_data(): Res=~p~n",[Res]),

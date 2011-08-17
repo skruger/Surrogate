@@ -163,19 +163,24 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 					{next_state,proxy_error,State}
 			end;
 		_ ->
-%% 			Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
-			Via = io_lib:format("Via: ~s ~s (Surrogate ~p)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost(),node()]),
-			Hdr0 = proxylib:remove_headers(["keep-alive","proxy-connection","proxy-authorization","accept-encoding"],ReqHdr#header_block.headers),
+%% 			Via = io_lib:format("Via: ~s ~s (Surrogate ~p)",[((State#proxy_pass.request)#header_block.request)#request_rec.protocol,net_adm:localhost(),node()]),
+			%% Move via headers to filter_headers
+			Hdr0 = proxylib:remove_headers(['Keep-Alive','Proxy-Connection','Proxy-Authorization','Accept-Encoding'],ReqHdr#header_block.headers),
 			Hdr1 = 
 			case proplists:get_value(enable_gzip,State#proxy_pass.config,false) of
 				false -> Hdr0;
 				_EnableGzip ->
-					proxylib:append_header("Accept-encoding: gzip",Hdr0)
+%% 					Hdr0++[{'Accept-Encoding',"gzip"}]
+					?ERROR_MSG("Gzip encoding is currently broken.~n",[]),
+					Hdr0
 			end,
-			Hdr = proxylib:append_header(Via, Hdr1),
+			Hdr = Hdr1,
 			Req=ReqHdr#header_block.request,
-			ReqStr = lists:flatten(io_lib:format("~s ~s ~s",[Req#request_rec.method,Req#request_rec.path,Req#request_rec.protocol])),
-			RequestHeaders = lists:flatten([[ReqStr|"\r\n"]|proxylib:combine_headers(Hdr)]),
+			{ProtoMajor,ProtoMinor} = Req#request_rec.protocol,
+			ReqStr = io_lib:format("~s ~s HTTP/~p.~p\r\n",[Req#request_rec.method,Req#request_rec.path,ProtoMajor,ProtoMinor]),
+			ReqHeaders = [ReqStr,proxylib:build_header_list(Hdr)],
+			RequestHeaders = iolist_to_binary(ReqHeaders),
+			?ERROR_MSG("RequestHeaders:~n~p~n",[RequestHeaders]),
 			case proxy_protocol:tcp_connect(State#proxy_pass.reverse_proxy_host) of
 				{ok,SSock} ->
 					gen_socket:send(SSock,RequestHeaders),
@@ -270,11 +275,11 @@ server_recv_11({end_response_data,_Size},State) ->
 
 
 proxy_finish(next,State) ->
-	Dict = proxylib:header2dict((State#proxy_pass.request)#header_block.headers),
+	Dict = dict:from_list((State#proxy_pass.request)#header_block.headers),
 %% 	gen_socket:close(State#proxy_pass.server_sock),
 %% 	gen_socket:close(State#proxy_pass.client_sock),
 %% 	{stop,normal,State}.
-	case dict:find("proxy-connection",Dict) of
+	case dict:find('Proxy-Connection',Dict) of
 %% 		{ok,"keep-alive"} when State#proxy_pass.keepalive >= 10 ->
 %% 			?DEBUG_MSG("Proxy-Connection: keep-alive Closing (~p)~n",[State#proxy_pass.keepalive]),
 %% 			gen_socket:close(State#proxy_pass.server_sock),

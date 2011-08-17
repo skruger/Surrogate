@@ -1,7 +1,7 @@
 
 -record(socks_listener,{listen_sock,parent_pid,config}).
 
--record(request_rec,{proxytype,method,path,protocol,host,state,port}).
+-record(request_rec,{proxytype,method,path,protocol,host,port}). %%,state  (was state being used?)
 -record(response_rec,{protocol,code,text}).
 
 -record(proxy_listener,{type,client_sock,listen_port,proplist,parent_pid,listen_sock}).
@@ -21,7 +21,7 @@
 
 -record(proxy_acl,{list,user}).
 
--record(header_block,{request,response,rstr,headers,body,expect}).
+-record(header_block,{request,response,rstr,rawhead,headers,body,expect}).
 
 -record(filter_host_list,{host,rule}).
 -record(filter_url_list,{host,path,rule}).

@@ -17,10 +17,61 @@
 %% --------------------------------------------------------------------
 
 -export([get_headers/2,read_header_block/3]).
+-export([decode_headers/1,read_decode_block/3]).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
+
+decode_headers(Sock) ->
+	read_decode_block(<<>>,Sock,#header_block{headers=[],body= <<>>}).
+
+read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
+	{Mode,Timeout} = 
+		if (Acc#header_block.request == undefined) and (Acc#header_block.response == undefined) ->
+			   {http,infinity};
+		   true -> {httph,2000}
+		end,
+	case erlang:decode_packet(Mode,HdrData,[]) of
+		{ok,http_eoh,Rest} ->
+%% 			?ERROR_MSG("4: ~p~n",[Acc]),
+			Acc#header_block{body=Rest,headers=lists:reverse(HdrList)};
+		{ok,{http_request,Method,URI,Ver}=RawReq,Rest} ->
+%% 			-record(request_rec,{proxytype,method,path,protocol,host,state,port}).
+			Req = 
+			case URI of
+				{abs_path,Path0} ->
+					#request_rec{proxytype=transparent_proxy,method=Method,path=Path0,protocol=Ver};
+				{absoluteURI,Protocol,Host,Port0,Path0} ->
+					Port =
+						if is_integer(Port0) -> Port0; 
+						   true -> 80 
+						end,
+					#request_rec{proxytype=Protocol,method=Method,path=Path0,protocol=Ver,host=Host,port=Port}
+			end,
+			read_decode_block(Rest,Sock,#header_block{rawhead=RawReq,request=Req});
+		{ok,{http_response,Ver,Code,ResponseString}=RawRes,Rest} ->
+			Res = #response_rec{protocol=Ver,code=Code,text=ResponseString},
+			read_decode_block(Rest,Sock,#header_block{rawhead=RawRes,response=Res});
+		{ok,{http_header,_Int,HdrName,_,HdrVal},Rest} ->
+			Hdr = {HdrName,HdrVal},
+			NewHdr = 
+			case HdrList of
+				undefined -> [Hdr];
+				_ -> [Hdr|HdrList]
+			end,
+			read_decode_block(Rest,Sock,Acc#header_block{headers=NewHdr});
+		_ ->
+			case gen_socket:recv(Sock,0,Timeout) of
+				{ok,More} ->
+					read_decode_block(<<HdrData/binary,More/binary>>,Sock,Acc);
+				{error,closed} = Err ->
+					throw(Err);
+				Err ->
+					?ERROR_MSG("Error decoding headers: ~p~n",[Err]),
+					throw(Err)
+			end
+	end.
 
 get_headers(Sock,Type) ->
 	read_header_block(<<>>,Sock,Type).
