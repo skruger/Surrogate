@@ -27,7 +27,9 @@
 %% ====================================================================
 
 http_connect(ProxyPass) ->
-	{ok,Host,Port} = proxylib:parse_connect((ProxyPass#proxy_pass.request)#header_block.rstr),
+	Req = (ProxyPass#proxy_pass.request)#header_block.request,
+	Host = Req#request_rec.host,
+	Port = Req#request_rec.port,
 	
 	case gen_tcp:connect(Host,Port,[binary,inet,{active,false}]) of
 		{ok,SvrSock0} ->

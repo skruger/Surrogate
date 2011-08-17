@@ -10,7 +10,7 @@
 %%
 %% Exported Functions
 %%
--export([header2dict/1,parse_host/2,parse_request/1,parse_response/1,parse_connect/1,combine_headers/1,build_header_list/1,split_headers/1,find_binary_pattern/2,method_has_data/2]).
+-export([header2dict/1,parse_host/2,parse_request/1,parse_response/1,combine_headers/1,build_header_list/1,split_headers/1,find_binary_pattern/2,method_has_data/2]).
 
 %% -export([send/2,setopts/2]).
 
@@ -133,18 +133,6 @@ split_headers(Header,Req,Acc) ->
 			Hdr = string:sub_string(Header,1,Idx-1),
 			Rest = string:sub_string(Header,Idx+2),
 			split_headers(Rest,Req,[Hdr|Acc])
-	end.
-
-parse_connect(Req) ->
-	case parse_request(Req) of
-		#request_rec{method="CONNECT",path=HostPort} = _ReqRec ->
-			case re:run(HostPort,"(.*):(.*)",[{capture,all,list}]) of
-				{match,[_,Host,PortStr]} ->
-					{Port,_} = string:to_integer(PortStr),
-					{ok,Host,Port}
-			end;
-		Err ->
-			Err
 	end.
 
 parse_request(Req) ->

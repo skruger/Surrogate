@@ -47,7 +47,12 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 						if is_integer(Port0) -> Port0; 
 						   true -> 80 
 						end,
-					#request_rec{proxytype=Protocol,method=Method,path=Path0,protocol=Ver,host=Host,port=Port}
+					#request_rec{proxytype=Protocol,method=Method,path=Path0,protocol=Ver,host=Host,port=Port};
+				{scheme,Host,PortStr} ->
+					#request_rec{proxytype=connect,method=Method,protocol=Ver,host=Host,port=list_to_integer(PortStr)};
+				Other ->
+					?ERROR_MSG("Got other ~p from raw request:~n~p~n",[Other,RawReq]),
+					throw(other_error)
 			end,
 			read_decode_block(Rest,Sock,#header_block{rawhead=RawReq,request=Req});
 		{ok,{http_response,Ver,Code,ResponseString}=RawRes,Rest} ->
