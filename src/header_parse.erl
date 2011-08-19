@@ -32,7 +32,7 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 			   {http,infinity};
 		   true -> {httph,2000}
 		end,
-	case erlang:decode_packet(Mode,HdrData,[]) of
+	case catch erlang:decode_packet(Mode,HdrData,[]) of
 		{ok,http_eoh,Rest} ->
 %% 			?ERROR_MSG("4: ~p~n",[Acc]),
 			Acc#header_block{body=Rest,headers=lists:reverse(HdrList)};
