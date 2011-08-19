@@ -105,7 +105,7 @@ init([State]) ->
 	HBlock0 = (State1#state.headers),
 	{Encoding,Headers} =
 		case dict:find('Content-Encoding',Dict0) of
- 			{ok,"gzip"} ->
+ 			{ok,ContentEnc} when (ContentEnc == "gzip") or (ContentEnc == "x-gzip") ->
 				case State1#state.size of
 					Vary when (Vary == close) or (Vary == chunked )->
 						GZHdr = proxylib:remove_headers(['Content-Encoding','Content-Length'],HBlock0#header_block.headers),
