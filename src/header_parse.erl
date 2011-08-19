@@ -35,7 +35,8 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 	case catch erlang:decode_packet(Mode,HdrData,[]) of
 		{ok,http_eoh,Rest} ->
 %% 			?ERROR_MSG("4: ~p~n",[Acc]),
-			Acc#header_block{body=Rest,headers=lists:reverse(HdrList)};
+			URL = format_request(Acc),
+			Acc#header_block{body=Rest,headers=lists:reverse(HdrList),rstr=URL};
 		{ok,{http_request,Method,URI,Ver}=RawReq,Rest} ->
 %% 			-record(request_rec,{proxytype,method,path,protocol,host,state,port}).
 			Req = 
@@ -49,7 +50,7 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 						end,
 					#request_rec{proxytype=Protocol,method=Method,path=Path0,protocol=Ver,host=Host,port=Port};
 				{scheme,Host,PortStr} ->
-					#request_rec{proxytype=connect,method=Method,protocol=Ver,host=Host,port=list_to_integer(PortStr)};
+					#request_rec{proxytype=connect,method=Method,protocol=Ver,host=Host,port=list_to_integer(PortStr),path=""};
 				Other ->
 					?ERROR_MSG("Got other ~p from raw request:~n~p~n",[Other,RawReq]),
 					throw(other_error)
@@ -77,6 +78,13 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 					throw(Err)
 			end
 	end.
+
+format_request(#header_block{request=#request_rec{method=Method,path=Path,host=Host,port=Port}}) ->
+	Req = io_lib:format("~s http://~s:~p~s",[Method,Host,Port,Path]),
+	Bin = iolist_to_binary(Req),
+	?ERROR_MSG("String: ~p~n",[Bin]),
+	binary_to_list(Bin);
+format_request(_) -> "Response request".
 
 get_headers(Sock,Type) ->
 	read_header_block(<<>>,Sock,Type).
