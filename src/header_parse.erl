@@ -82,7 +82,7 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 format_request(#header_block{request=#request_rec{method=Method,path=Path,host=Host,port=Port}}) ->
 	Req = io_lib:format("~s http://~s:~p~s",[Method,Host,Port,Path]),
 	Bin = iolist_to_binary(Req),
-	?ERROR_MSG("String: ~p~n",[Bin]),
+%% 	?ERROR_MSG("String: ~p~n",[Bin]),
 	binary_to_list(Bin);
 format_request(_) -> "Response request".
 
