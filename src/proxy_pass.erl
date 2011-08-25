@@ -280,26 +280,28 @@ proxy_finish(next,State) ->
 %% 	gen_socket:close(State#proxy_pass.client_sock),
 %% 	{stop,normal,State}.
 	case dict:find('Proxy-Connection',Dict) of
-%% 		{ok,"keep-alive"} when State#proxy_pass.keepalive >= 10 ->
-%% 			?DEBUG_MSG("Proxy-Connection: keep-alive Closing (~p)~n",[State#proxy_pass.keepalive]),
-%% 			gen_socket:close(State#proxy_pass.server_sock),
-%% 			gen_socket:close(State#proxy_pass.client_sock),
-%% 			{stop,normal,State};
-		{ok,"keep-alive"} ->
-%% 			?DEBUG_MSG("Proxy-Connection: keep-alive (~p)~n",[State#proxy_pass.keepalive]),
-			gen_fsm:send_event(self(),request),
-			gen_socket:close(State#proxy_pass.server_sock),
-			{next_state,client_send_11,State#proxy_pass{server_sock=undefined,keepalive=State#proxy_pass.keepalive+1}};
-		{ok,"close"} ->
-			gen_socket:close(State#proxy_pass.server_sock),
-			gen_socket:close(State#proxy_pass.client_sock),
-			{stop,normal,State};
+		{ok,ProxyConn} ->
+			case string:to_lower(ProxyConn) of
+%% 				"keep-alive" when State#proxy_pass.keepalive >= 10 ->
+%% 					?DEBUG_MSG("Proxy-Connection: keep-alive Closing (~p)~n",[State#proxy_pass.keepalive]),
+%% 					gen_socket:close(State#proxy_pass.server_sock),
+%% 					gen_socket:close(State#proxy_pass.client_sock),
+%% 					{stop,normal,State};
+				"keep-alive" ->
+					gen_fsm:send_event(self(),request),
+					gen_socket:close(State#proxy_pass.server_sock),
+					{next_state,client_send_11,State#proxy_pass{server_sock=undefined,keepalive=State#proxy_pass.keepalive+1}};
+				"close" ->
+					gen_socket:close(State#proxy_pass.server_sock),
+					gen_socket:close(State#proxy_pass.client_sock),
+					{stop,normal,State};
+				Conn ->
+					?DEBUG_MSG("Closing with unknown value \"Connection: ~p\"~n",[Conn]),
+					gen_socket:close(State#proxy_pass.server_sock),
+					gen_socket:close(State#proxy_pass.client_sock),
+					{stop,normal,State}
+			end;
 		error ->
-			gen_socket:close(State#proxy_pass.server_sock),
-			gen_socket:close(State#proxy_pass.client_sock),
-			{stop,normal,State};
-		Conn ->
-			?DEBUG_MSG("Closing with unknown value \"Connection: ~p\"~n",[Conn]),
 			gen_socket:close(State#proxy_pass.server_sock),
 			gen_socket:close(State#proxy_pass.client_sock),
 			{stop,normal,State}

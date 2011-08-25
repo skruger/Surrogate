@@ -93,8 +93,12 @@ init([State]) ->
 									{Len,_} = string:to_integer(LenStr),
 									{send_headers,State#state{size=Len,bytes_sent=0}};
 								NoLen ->
-									?ERROR_MSG("No valid size headers:~nchunked encoding: ~p~nConnection: close: ~p~nContent-length: ~p~nCan not receive data!~n",[NoChunk,NoConn,NoLen]),
-									{stop,error}
+									?ERROR_MSG("No valid size headers received from server!  (Non compliant HTTP host)~n~p~nchunked encoding: ~p~nConnection: close: ~p~nContent-length: ~p~n~p~n",
+											   [(State#state.request)#header_block.rstr,NoChunk,NoConn,NoLen,(State#state.headers)#header_block.headers]),
+									Len = size(State#state.buff),
+									Hdr = (State#state.headers)#header_block{headers= (State#state.headers)#header_block.headers++[{'Connection',"close"}]},
+									{send_headers,State#state{headers=Hdr,size=close,bytes_sent=0}}
+%% 									{stop,error}
 							end
 					end	
 			end;
