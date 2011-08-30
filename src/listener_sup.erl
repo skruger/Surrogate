@@ -95,7 +95,7 @@ ip_listener_childspec({ip,_}=Key,ListenPropList) ->
 		
 	
 ip_sup_name({ip,IP}) ->
-	list_to_atom(lists:flatten(io_lib:format("listener_~s_sup",proxylib:format_inet(IP)))).
+	list_to_atom(lists:flatten(io_lib:format("listener_~s_sup",[proxylib:format_inet(IP)]))).
 
 ip_listener_list([],Acc) -> Acc;
 ip_listener_list([L|R],Acc) ->
