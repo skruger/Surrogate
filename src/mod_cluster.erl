@@ -17,6 +17,7 @@
 
 -export([vip_state/3,listener_name/2,add_listener/1,delete_listener/1,start_vips/1]).
 -export([get_listeners/0,get_listener_details/1]).
+-export([add_balancer/2,get_balancers/0,balancer_add_host/2,balancer_remove_host/2,balancer_add_check/2,balancer_remove_check/2]).
 
 -record(state,{opts}).
 
@@ -36,10 +37,19 @@ proxy_mod_start(Conf) ->
 	mnesia:add_table_index(cluster_listener,ip),
 	mnesia:change_table_copy_type(cluster_listener,node(),disc_copies),
 	mnesia:add_table_copy(cluster_listener,node(),disc_copies),
-	application:load(cluster_supervisor),
-	application:set_env(cluster_supervisor,cluster_config,Conf),
-	application:start(cluster_supervisor),
-	cluster_supervisor_callback:add(vip_state, ?MODULE, Conf).
+	mnesia:create_table(cluster_balancer,[{attributes,record_info(fields,cluster_balancer)}]),
+	mnesia:change_table_copy_type(cluster_balancer,node(),disc_copies),
+	mnesia:add_table_copy(cluster_listener,node(),disc_copies),
+	case proplists:get_value(start_cluster_supervisor,Conf,true) of
+		false ->
+			ok;
+		_ ->
+			application:load(cluster_supervisor),
+			application:set_env(cluster_supervisor,cluster_config,Conf),
+			application:start(cluster_supervisor),
+			cluster_supervisor_callback:add(vip_state, ?MODULE, Conf)
+	end,
+	ok.
 
 proxy_mod_stop(_Conf) ->
 	try
@@ -57,6 +67,84 @@ add_listener({Type,IP,Port,Opts}) ->
 
 delete_listener(LName) ->
 	mnesia:transaction(fun() -> mnesia:delete({cluster_listener,LName}) end).
+
+add_balancer(Name,Module) when is_list(Name) ->
+	add_balancer(list_to_atom(Name),Module);
+add_balancer(Name,Module) when is_list(Module) ->
+	case code:where_is_file(Module++".beam") of
+		non_existing ->
+			{error,bad_module};
+		_ ->
+			add_balancer(Name,list_to_atom(Module))
+	end;
+add_balancer(Name,Module) ->
+	case code:ensure_loaded(Module) of
+		{module,_} ->
+			Bal = #cluster_balancer{name=Name,balance_module=Module,hosts=[],checks=[],config=[]},
+			F1 = fun() ->
+				 		mnesia:write(Bal) end,
+			mnesia:transaction(F1);
+		Err ->
+			Err
+	end.
+
+balancer_add_host(Name,Host) when is_list(Name) ->
+	balancer_add_host(list_to_atom(Name),Host);
+balancer_add_host(Name,Host) when is_list(Host) ->
+	balancer_add_host(Name,proxylib:inet_parse(Host));
+balancer_add_host(Name,Host) ->
+	F1 = fun() ->
+				 case mnesia:read(cluster_balancer,Name) of
+					 [#cluster_balancer{hosts=Hosts}=Bal|_] ->
+						 mnesia:write(Bal#cluster_balancer{hosts=[Host|Hosts]});
+					 _ ->
+						 mnesia:abort(no_balancer)
+				 end end,
+	mnesia:transaction(F1).
+
+balancer_remove_host(Name,Host) when is_list(Name) ->
+	balancer_remove_host(list_to_atom(Name),Host);
+balancer_remove_host(Name,Host) when is_list(Host) ->
+	balancer_remove_host(Name,proxylib:inet_parse(Host));
+balancer_remove_host(Name,Host) ->
+	F1 = fun() ->
+				 case mnesia:read(cluster_balancer,Name) of
+					 [#cluster_balancer{hosts=Hosts}=Bal|_] ->
+						 mnesia:write(Bal#cluster_balancer{hosts=lists:delete(Host,Hosts)});
+					 _ ->
+						 mnesia:abort(no_balancer)
+				 end end,
+	mnesia:transaction(F1).
+
+balancer_add_check(Name,Check) when is_list(Name) ->
+	balancer_add_check(list_to_atom(Name),Check);
+balancer_add_check(Name,Check) ->
+	F1 = fun() ->
+				 case mnesia:read(cluster_balancer,Name) of
+					 [#cluster_balancer{checks=Checks}=Bal|_] ->
+						 mnesia:write(Bal#cluster_balancer{checks=[Check|Checks]});
+					 _ ->
+						 mnesia:abort(no_balancer)
+				 end end,
+	mnesia:transaction(F1).
+
+balancer_remove_check(Name,Check) when is_list(Name) ->
+	balancer_remove_check(list_to_atom(Name),Check);
+balancer_remove_check(Name,Check) ->
+	F1 = fun() ->
+				 case mnesia:read(cluster_balancer,Name) of
+					 [#cluster_balancer{checks=Checks}=Bal|_] ->
+						 mnesia:write(Bal#cluster_balancer{checks=lists:delete(Check,Checks)});
+					 _ ->
+						 mnesia:abort(no_balancer)
+				 end end,
+	mnesia:transaction(F1).
+
+get_balancers() ->
+	Balancers = [mnesia:dirty_read(cluster_balancer,Name) || Name <- mnesia:dirty_all_keys(cluster_balancer)],
+	[ {Name,Bal,Conf++[{hosts,Hosts},{checks,Checks}]}
+	 || [#cluster_balancer{name=Name,balance_module=Bal,hosts=Hosts,checks=Checks,config=Conf}|_] 
+			<- Balancers].
 
 start_link(Opts) ->
 	gen_server:start_link({local,?MODULE},?MODULE,Opts,[]).

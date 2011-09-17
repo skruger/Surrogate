@@ -6,6 +6,7 @@
 
 -record(proxy_listener,{type,client_sock,listen_port,proplist,parent_pid,listen_sock}).
 -record(cluster_listener,{name,ip,port,type,options,supervisor,sup_process_name}).
+-record(cluster_balancer,{name,enabled,balance_module,hosts,checks,config}).
 
 -record(proxy_pass,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,
 					response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,
