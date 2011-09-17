@@ -53,11 +53,12 @@ http_api(["vip"],#http_admin{body=JsonBin,has_auth=Auth},_Conf) when Auth == tru
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
 								  {"error",iolist_to_binary(io_lib:format("~p",[ErrTup]))}]},
 			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))};
-		_:{ErrName,ErrBin} ->
+		_:{ErrName,ErrBin} when is_list(ErrBin) ; is_binary(ErrBin) ->
 			?ERROR_MSG("~p / ~p",[ErrName,ErrBin]),
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
 								  {"error",iolist_to_binary(ErrBin)}]},
 			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))};
+
 		_:Error ->
 			?ERROR_MSG("Update error (~p): ~p",[self(),Error]),
 			EStr = io_lib:format("Update error (~p): ~p",[self(),Error]),
@@ -133,10 +134,13 @@ http_api(["listeners.json"],Request,_Conf) when Request#http_admin.has_auth == t
 	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mochijson2:encode(JsonListeners))};
 http_api(["listeners.json"],_Request,_Conf) ->
 	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mochijson2:encode({struct,[{"items",[]}]}))};
-http_api(Path,_Request,_Conf) ->
+http_api(["postecho"],Request,_Conf) ->
+	{200,[],iolist_to_binary(Request#http_admin.body)};
+http_api(Path,Request,_Conf) when Request#http_admin.has_auth == true ->
 	Err = io_lib:format("Not found in ~p: ~p~n",[?MODULE,Path]),
-	{404,[{'Content-type',"text/plain"}],iolist_to_binary(Err)}.
-
+	{404,[{'Content-type',"text/plain"}],iolist_to_binary(Err)};
+http_api(_Path,_Request,_Conf) ->
+	{401,[{"WWW-Authenticate","Basic realm=\"mod_cluster_admin\""}],iolist_to_binary("Authorization required")}.
 
 %%
 %% Local Functions
