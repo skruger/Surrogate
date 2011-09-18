@@ -55,9 +55,10 @@ start_link(Pool,BalanceMod,Conf) ->
 init({Pool,BalanceMod,Conf}) ->
 	CName = proxylib:get_pool_process(Pool),
 	Child0 = {balancer,{gen_balancer,start_link,[CName,BalanceMod,Conf]},permanent,2000,worker,[]},
+	Hosts = proplists:get_value(hosts,Conf,[]),
 	HealthChecks = lists:map(fun(H) ->
 									 {H,{healthcheck,start_checks,[Pool,H,proplists:get_value(checks,Conf,[])]},permanent,2000,worker,[]}
-							 end, proplists:get_value(hosts,Conf,[])),
+							 end, lists:usort(Hosts)),
 	%% TODO:  Add health check processes here 
 	Children = [Child0|HealthChecks],
 	{ok,{{one_for_one,5,10}, Children}}.

@@ -68,20 +68,45 @@ init({gen_server,Conf}) ->
 	self() ! check_config_timer,
 	{ok,#state{config=Conf}}.
 
+handle_call({refresh_balancer,Name},_From,State) ->
+	PoolName = get_poolname(Name),
+	supervisor:terminate_child(?SUP, PoolName),
+	supervisor:delete_child(?SUP, PoolName),
+	gen_server:cast(self(),check_config),
+	{reply,ok,State};
 handle_call(_Req,_From,State) ->
 	{reply,error,State}.
 
 handle_cast(check_config,State) ->
-	CurrentChildren = [Child || {Child,_,_,_} <- supervisor:which_children(mod_balance_sup)],
-	NewChildren = balancer_specs(State#state.config)++balancer_specs(mod_cluster:get_balancers()),
-%% 	?ERROR_MSG("Current: ~n~p~nNew:~n~p~n",[CurrentChildren,NewChildren]),
+	SupChildren = supervisor:which_children(mod_balance_sup),
+%% 	CurrentChildren = [Child || {Child,_,_,_} <- SupChildren],
+	NewChildrenList = balancer_specs(State#state.config)++balancer_specs(mod_cluster:get_balancers()),
+	lists:foreach(fun({Child,_,_,_,_,_}=Spec) ->
+						  case lists:keyfind(Child,1,SupChildren) of
+							  false ->
+								  ?ERROR_MSG("Start child: ~p~n",[Spec]),
+								  supervisor:start_child(?SUP,Spec);
+							  _ ->
+								  ok
+						  end end,NewChildrenList),
+	lists:foreach(fun({Child,_,_,_}) ->
+						  case lists:keyfind(Child,1,NewChildrenList) of
+							  false ->
+								  ?ERROR_MSG("Stop child: ~p~n",[Child]),
+								  supervisor:terminate_child(?SUP, Child),
+								  supervisor:delete_child(?SUP,Child),
+								  ok;
+							  _ ->
+								  ok
+						  end end,SupChildren),
+%% 	?ERROR_MSG("Current: ~n~p~nNew:~n~p~n",[CurrentChildren,NewChildrenList]),
 	{noreply,State};
 handle_cast(_Msg,State) ->
 	{noreply,State}.
 
 handle_info(check_config_timer,State) ->
 	gen_server:cast(self(),check_config),
-	erlang:send_after(5000,self(),check_config_timer),
+	erlang:send_after(30000,self(),check_config_timer),
 	{noreply,State};
 handle_info(_Info,State) ->
 	{noreply,State}.

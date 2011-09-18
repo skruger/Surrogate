@@ -17,7 +17,8 @@
 
 -export([vip_state/3,listener_name/2,add_listener/1,delete_listener/1,start_vips/1]).
 -export([get_listeners/0,get_listener_details/1]).
--export([add_balancer/2,get_balancers/0,balancer_add_host/2,balancer_remove_host/2,balancer_add_check/2,balancer_remove_check/2]).
+-export([add_balancer/2,get_balancers/0,balancer_add_host/2,balancer_remove_host/2]).
+-export([balancer_add_check/2,balancer_remove_check/2,balancer_set_enable/2,balancer_refresh_config/1]).
 
 -record(state,{opts}).
 
@@ -80,13 +81,31 @@ add_balancer(Name,Module) when is_list(Module) ->
 add_balancer(Name,Module) ->
 	case code:ensure_loaded(Module) of
 		{module,_} ->
-			Bal = #cluster_balancer{name=Name,balance_module=Module,hosts=[],checks=[],config=[]},
+			Bal = #cluster_balancer{name=Name,enabled=false,balance_module=Module,hosts=[],checks=[],config=[]},
 			F1 = fun() ->
 				 		mnesia:write(Bal) end,
 			mnesia:transaction(F1);
 		Err ->
 			Err
 	end.
+
+balancer_enable(Name) ->
+	balancer_set_enable(Name,true).
+
+balancer_disable(Name) ->
+	balancer_set_enable(Name,false).
+
+balancer_set_enable(Name,Enable) when is_list(Name) ->
+	balancer_set_enable(list_to_atom(Name),Enable);
+balancer_set_enable(Name,Enable) ->
+	F1 = fun() ->
+				 case mnesia:read(cluster_balancer,Name) of
+					 [#cluster_balancer{}=Bal|_] ->
+						 mnesia:write(Bal#cluster_balancer{enabled=Enable});
+					 _ ->
+						 mnesia:abort(no_balancer)
+				 end end,
+	mnesia:transaction(F1).
 
 balancer_add_host(Name,Host) when is_list(Name) ->
 	balancer_add_host(list_to_atom(Name),Host);
@@ -140,10 +159,15 @@ balancer_remove_check(Name,Check) ->
 				 end end,
 	mnesia:transaction(F1).
 
+balancer_refresh_config(Name) when is_list(Name) ->
+	balancer_refresh_config(list_to_atom(Name));
+balancer_refresh_config(Name) ->
+	gen_server:call(mod_balance,{refresh_balancer,Name}).
+
 get_balancers() ->
 	Balancers = [mnesia:dirty_read(cluster_balancer,Name) || Name <- mnesia:dirty_all_keys(cluster_balancer)],
 	[ {Name,Bal,Conf++[{hosts,Hosts},{checks,Checks}]}
-	 || [#cluster_balancer{name=Name,balance_module=Bal,hosts=Hosts,checks=Checks,config=Conf}|_] 
+	 || [#cluster_balancer{name=Name,enabled=true,balance_module=Bal,hosts=Hosts,checks=Checks,config=Conf}|_] 
 			<- Balancers].
 
 start_link(Opts) ->
