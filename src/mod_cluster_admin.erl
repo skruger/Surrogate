@@ -29,25 +29,14 @@ proxy_mod_stop(_Opts) ->
 	proxy_protocol_http_admin:unregister_module(?MODULE).
 
 
-http_api(["vip"],#http_admin{body=JsonBin,has_auth=Auth},_Conf) when Auth == true ->
+http_api(["vip",IPStr],#http_admin{method='POST',has_auth=Auth},_Conf) when Auth == true ->
 	try
-		case mochijson2:decode(JsonBin) of
-			{struct,Args} ->
-				case proplists:get_value(<<"vip">>,Args,none) of
-					none ->
- 						erlang:error({json_error,io_lib:format("POST Json did not contain a 'vip' entry. (~p)",[Args])});
-					VipBin ->
-						Vip = {ip,proxylib:inet_parse(binary_to_list(VipBin))},
-						cluster_vip_manager:add_vip(Vip),
-						cluster_vip_manager:disable_vip(Vip),
-						StatusMsg = io_lib:format("Posted: ~p~n",[Vip]),
-						JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
-						{200,[],iolist_to_binary(mochijson2:encode(JsonOut))}
-				end;
-			Other ->
-				?ERROR_MSG("Unexpected decode result: ~n~p~n",[Other]),
-				erlang:error({json_error,io_lib:format("Json decode error: ~p",[Other])})
-		end
+		Vip = {ip,proxylib:inet_parse(IPStr)},
+		cluster_vip_manager:add_vip(Vip),
+		cluster_vip_manager:disable_vip(Vip),
+		StatusMsg = io_lib:format("Posted: ~p~n",[Vip]),
+		JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
+		{200,[],iolist_to_binary(mochijson2:encode(JsonOut))}
 	catch
 		_:{ErrName,ErrTup} when is_tuple(ErrTup) ->
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
@@ -65,13 +54,39 @@ http_api(["vip"],#http_admin{body=JsonBin,has_auth=Auth},_Conf) when Auth == tru
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error",iolist_to_binary(EStr)}]},
 			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))}
 	end;
-http_api(["vip","delete",IP],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
+http_api(["vip",IP],#http_admin{method='DELETE',has_auth=Auth},_Conf) when Auth == true ->
 	Vip = {ip,proxylib:inet_parse(IP)},
 	cluster_vip_manager:disable_vip(Vip),
 	StatusMsg = "Disabled VIP",
 	JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
 	{200,[],iolist_to_binary(mochijson2:encode(JsonOut))};
-http_api(["vips.json"],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
+http_api(["vip",IP],#http_admin{method='PUT',has_auth=Auth,body=JsonIn},_Conf) when Auth == true ->
+	try
+		Vip = {ip,proxylib:inet_parse(IP)},
+		{Status,JsonOut} =
+		case mochijson2:decode(JsonIn) of
+			{struct,JsonList} ->
+				case proplists:get_value(<<"action">>,JsonList,<<"none">>) of
+					<<"enable">> ->
+						cluster_vip_manager:enable_vip(Vip),
+						{200,[{"status",<<"ok">>},{"error",<<"none">>}]};
+					<<"disable">> ->
+						cluster_vip_manager:disable_vip(Vip),
+						{200,[{"status",<<"ok">>},{"error",<<"none">>}]};
+					BadAction ->
+						{500,[{"status",<<"error">>},{"error",<<"bad_action">>},{"status_msg",iolist_to_binary(["Invalid action: ",BadAction])}]}
+				end;
+			BadJson ->
+				?ERROR_MSG("Bad json in POST ~p/vip/~s~n~p~n",[?MODULE,IP,BadJson]),
+				{500,[{"status",<<"error">>},{"error",<<"bad_action">>},{"status_msg",iolist_to_binary(["Invalid json."])}]}
+		end,
+		{Status,[{"Content-type","application/json"}],iolist_to_binary(mochijson2:encode({struct,JsonOut}))}
+	catch
+		_:VipErr ->
+			?ERROR_MSG("Error modifying vip: ~p~n",[VipErr]),
+			{500,[],<<"Internal Server Error">>}
+	end;
+http_api(["vip"],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
 	try
 		VipList0 = cluster_vip_manager:get_vip_list(),
 		VipList = lists:map(fun({IP,Stat,Nodes}) ->
@@ -139,7 +154,8 @@ http_api(["postecho"],Request,_Conf) ->
 http_api(Path,Request,_Conf) when Request#http_admin.has_auth == true ->
 	Err = io_lib:format("Not found in ~p: ~p~n",[?MODULE,Path]),
 	{404,[{'Content-type',"text/plain"}],iolist_to_binary(Err)};
-http_api(_Path,_Request,_Conf) ->
+http_api(Path,Request,_Conf) ->
+	?ERROR_MSG("Authorization required: ~p~n~p~n",[Path,Request]),
 	{401,[{"WWW-Authenticate","Basic realm=\"mod_cluster_admin\""}],iolist_to_binary("Authorization required")}.
 
 %%

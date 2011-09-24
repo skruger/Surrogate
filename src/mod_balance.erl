@@ -14,9 +14,10 @@
 
 -export([proxy_mod_start/1,proxy_mod_stop/1]).
 
--export([add_balancer/2,get_balancers/0,balancer_add_host/2,balancer_remove_host/2]).
+-export([add_balancer/2,get_balancers/0,get_balancers_raw/0,balancer_add_host/2,balancer_remove_host/2]).
 -export([balancer_add_check/2,balancer_remove_check/2,balancer_set_enable/2,balancer_refresh_config/1]).
 
+-export([http_api/3]).
 
 -record(state,{config}).
 %%
@@ -27,6 +28,7 @@ proxy_mod_start(Conf) ->
 	mnesia:create_table(cluster_balancer,[{attributes,record_info(fields,cluster_balancer)}]),
 	mnesia:change_table_copy_type(cluster_balancer,node(),disc_copies),
 	mnesia:add_table_copy(cluster_listener,node(),disc_copies),
+	proxy_protocol_http_admin:register_module(?MODULE,?MODULE,http_api),
 	Spec = {?SUP,{supervisor,start_link,[{local,?SUP},?MODULE,{supervisor,Conf}]},
 			permanent,2000,supervisor,[?MODULE]},
 	supervisor:start_child(surrogate_sup,Spec),
@@ -37,6 +39,7 @@ proxy_mod_start(Conf) ->
 	ok.
 
 proxy_mod_stop(_) ->
+	proxy_protocol_http_admin:unregister_module(?MODULE),
 	ok.
 
 get_poolname(PName) ->
@@ -137,6 +140,13 @@ balancer_remove_host(Name,Host) ->
 
 balancer_add_check(Name,Check) when is_list(Name) ->
 	balancer_add_check(list_to_atom(Name),Check);
+balancer_add_check(Name,Check) when is_list(Check) ->
+	case proxylib:string_to_term(Check) of
+		{error,_} = Err ->
+			Err;
+		CheckTerm ->
+			balancer_add_check(Name,CheckTerm)
+	end;
 balancer_add_check(Name,Check) ->
 	F1 = fun() ->
 				 case mnesia:read(cluster_balancer,Name) of
@@ -149,6 +159,13 @@ balancer_add_check(Name,Check) ->
 
 balancer_remove_check(Name,Check) when is_list(Name) ->
 	balancer_remove_check(list_to_atom(Name),Check);
+balancer_remove_check(Name,Check) when is_list(Check) ->
+	case proxylib:string_to_term(Check) of
+		{error,_} = Err ->
+			Err;
+		CheckTerm ->
+			balancer_remove_check(Name,CheckTerm)
+	end;
 balancer_remove_check(Name,Check) ->
 	F1 = fun() ->
 				 case mnesia:read(cluster_balancer,Name) of
@@ -164,11 +181,66 @@ balancer_refresh_config(Name) when is_list(Name) ->
 balancer_refresh_config(Name) ->
 	gen_server:call(mod_balance,{refresh_balancer,Name}).
 
+get_balancers_raw() ->
+	[mnesia:dirty_read(cluster_balancer,Name) || Name <- mnesia:dirty_all_keys(cluster_balancer)].
+
 get_balancers() ->
-	Balancers = [mnesia:dirty_read(cluster_balancer,Name) || Name <- mnesia:dirty_all_keys(cluster_balancer)],
+	Balancers = get_balancers_raw(),
 	[ {Name,Bal,Conf++[{hosts,Hosts},{checks,Checks}]}
 	 || [#cluster_balancer{name=Name,enabled=true,balance_module=Bal,hosts=Hosts,checks=Checks,config=Conf}|_] 
 			<- Balancers].
+
+balancer_to_json(#cluster_balancer{name=Name,enabled=En,balance_module=Mod,hosts=Hosts,checks=Checks,config=Conf}) ->
+	HostList = [list_to_binary(proxylib:format_inet(H)) || H <- Hosts],
+	CheckList = [list_to_binary(io_lib:format("~p.",[Chk])) || Chk <- Checks],
+	ConfStr = list_to_binary(io_lib:format("~p.",[Conf])),
+	{struct,[{"pool",list_to_binary(atom_to_list(Name))},{"enabled",list_to_binary(atom_to_list(En))},
+			 {"balance_module",list_to_binary(atom_to_list(Mod))},{"hosts",HostList},{"checks",CheckList},
+			 {"config",ConfStr}]}.
+
+json_to_balancer({struct,JsonList},Pool) ->
+	json_to_balancer2(JsonList,#cluster_balancer{name=Pool,enabled=false,hosts=[],checks=[],config=[]}).
+
+json_to_balancer2([],Acc) ->
+	Acc;
+json_to_balancer2([{<<"enabled">>,Bin}|R],Acc) ->
+	json_to_balancer2(R,Acc#cluster_balancer{enabled=list_to_atom(binary_to_list(Bin))});
+json_to_balancer2([{<<"balance_module">>,Bin}|R],Acc) ->
+	json_to_balancer2(R,Acc#cluster_balancer{balance_module=list_to_atom(binary_to_list(Bin))});
+json_to_balancer2([{<<"hosts">>,HList}|R],Acc) ->
+	Hosts = [proxylib:inet_parse(binary_to_list(H)) || H <- HList],
+	json_to_balancer2(R,Acc#cluster_balancer{hosts=Hosts});
+json_to_balancer2([{<<"checks">>,Bin}|R],Acc) ->
+	Checks = [proxylib:string_to_term(binary_to_list(T)) || T <- Bin],
+	json_to_balancer2(R,Acc#cluster_balancer{checks=Checks});
+json_to_balancer2([{<<"config">>,Bin}|R],Acc) ->
+	Conf = proxylib:string_to_term(binary_to_list(Bin)),
+	json_to_balancer2(R,Acc#cluster_balancer{config=Conf});
+json_to_balancer2([_|R],Acc) ->
+	json_to_balancer2(R,Acc).
+
+http_api(["pool"],#http_admin{method='GET',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
+	Balancers = [balancer_to_json(Bal) || [#cluster_balancer{}=Bal] <- get_balancers_raw()],
+%% 	?ERROR_MSG("Balancers: ~n~p~n",[Balancers]),
+	{200,[],iolist_to_binary(mochijson2:encode({struct,[{"items",Balancers}]}))};
+http_api(["pool",PoolStr],#http_admin{method='GET',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
+	Balancers = [{atom_to_list(Name),Bal} || [#cluster_balancer{name=Name}=Bal|_] <- get_balancers_raw()],
+	case proplists:get_value(PoolStr,Balancers,none) of
+		#cluster_balancer{}=Balance ->
+			{200,[],iolist_to_binary(mochijson2:encode(balancer_to_json(Balance)))};
+		_Bal ->
+			{404,[],<<"Pool not found">>}
+	end;
+http_api(["pool",PoolStr],#http_admin{body=Body,method='POST',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
+	Bal = json_to_balancer(mochijson2:decode(Body),list_to_atom(PoolStr)),
+	mnesia:dirty_write(Bal),
+	{500,[],<<"not implemented">>};
+http_api(_,Req,_Cfg) when Req#http_admin.has_auth == true ->
+	{404,[],<<"Not found">>};
+http_api(_,Req,_Cfg) ->
+	?ERROR_MSG("Auth required: ~p~n",[Req]),
+	{401,["WWW-Authenticate","Basic realm=\"mod_balance\""],<<"Authorization required for mod_balance">>}.
+
 
 init({supervisor,_Conf}) ->
 	{ok,{{one_for_one,5,50},[]}};
