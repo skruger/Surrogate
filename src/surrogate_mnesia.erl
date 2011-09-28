@@ -10,7 +10,7 @@
 %%
 %% Exported Functions
 %%
--export([delete_all/0,remove_disc_node/1,stop_remove_disc_node/1,add_disc_node/2,tables/0,disc_nodes/0,add_discless_node/1]).
+-export([delete_all/0,remove_disc_node/1,stop_remove_disc_node/1,add_disc_node/2,tables/0,disc_nodes/0,add_discless_node/1,change_node_name/5]).
 
 %%
 %% API Functions
@@ -136,7 +136,37 @@ delete_all() ->
 	[
 	 mnesia:delete_table(proxy_userinfo)
 	].
-	
+
+
+%% Function found on stackoverflow
+%% http://stackoverflow.com/questions/463400/how-to-rename-the-node-running-a-mnesia-database
+change_node_name(Mod, From, To, Source, Target) ->
+	Switch =
+		fun(Node) when Node == From -> To;
+		   (Node) when Node == To -> throw({error, already_exists});
+		   (Node) -> Node
+		end,
+	Convert =
+		fun({schema, db_nodes, Nodes}, Acc) ->
+				{[{schema, db_nodes, lists:map(Switch,Nodes)}], Acc};
+		   ({schema, version, Version}, Acc) ->
+				{[{schema, version, Version}], Acc};
+		   ({schema, cookie, Cookie}, Acc) ->
+				{[{schema, cookie, Cookie}], Acc};
+		   ({schema, Tab, CreateList}, Acc) ->
+				Keys = [ram_copies, disc_copies, disc_only_copies],
+				OptSwitch =
+					fun({Key, Val}) ->
+							case lists:member(Key, Keys) of
+								true -> {Key, lists:map(Switch, Val)};
+								false-> {Key, Val}
+							end
+					end,
+				{[{schema, Tab, lists:map(OptSwitch, CreateList)}], Acc};
+		   (Other, Acc) ->
+				{[Other], Acc}
+		end,
+	mnesia:traverse_backup(Source, Mod, Target, Mod, Convert, switched).
 
 
 

@@ -47,20 +47,6 @@ remove_header(Name,Hdr) ->
 	lists:filter(fun({N,_}) when N == Name -> false;
 					(_) -> true end,Hdr).
 
-%% remove_header(Name,Hdr) ->
-%% 	remove_header(Name,Hdr,[]).
-%% remove_header(_Name,[],Acc) ->
-%% 	lists:reverse(Acc);
-%% remove_header(Name,[Hdr|R],Acc) ->
-%% 	Idx = string:str(Hdr,":"),
-%% 	case string:to_lower(string:sub_string(Hdr,1,Idx-1)) of
-%% 		Name ->
-%% %% 			remove_header(Name,R,Acc);
-%% 			lists:reverse(Acc)++R;
-%% 		_ ->
-%% 			remove_header(Name,R,[Hdr|Acc])
-%% 	end.
-
 replace_header(Name,NewHdr,HdrBlock) ->
 	replace_header(Name,NewHdr,HdrBlock,[]).
 replace_header(_,_,[],Acc) ->
@@ -251,23 +237,6 @@ inet_getaddr(Host,inet6) ->
 			inet_getaddr(Host,inet)
 	end.
 
-%% method_has_data(Request,ResHdr) ->
-%% 	case parse_request(Request) of
-%% 		#request_rec{method="HEAD"} ->
-%% 			false;
-%% 		_ ->
-%% 			case parse_response(ResHdr#proxy_pass.request) of
-%% 				#response_rec{code=204} ->
-%% 					false;
-%% 				#response_rec{code=304} ->
-%% 					false;
-%% 				#response_rec{code=Code} when (Code < 200) and (Code > 99) ->
-%% 					flase;
-%% 				_ ->
-%% 					true
-%% 			end
-%% 	end.
-
 find_binary_pattern(Subject,Pat) ->
 	find_binary_pattern(Subject,Pat,0).
 
@@ -306,47 +275,3 @@ uri_unescape2([$% ,H1,H2|R],Acc) ->
 	end;
 uri_unescape2([C|R],Acc) ->
 	uri_unescape2(R,[C|Acc]).
-
-%% rapply(Node,Mod,Fun,Args) ->
-%% 	try
-%% 		Parent = self(),
-%% 		F = fun() ->
-%% 					Parent ! {rapply,apply(Mod,Fun,Args)}
-%% 			end,
-%% 		spawn(Node,F),
-%% 		receive
-%% 			{rapply,Ret} ->
-%% 				Ret
-%% 		after 10000 ->
-%% 				?ERROR_MSG("rapply() failed!",[]),
-%% 				{error,timeout}
-%% 		end
-%% 	catch
-%% 		_:Err ->
-%% 			{error,Err}
-%% 	end.
-
-			%% 	string:str(binary_to_list(Subject),binary_to_list(Pat)).
-
-%% send({sslsocket,_,_} = Sock,Data) ->
-%% 	ssl:send(Sock,Data);
-%% send(Sock,Data) ->
-%% 	gen_tcp:send(Sock,Data).
-%% 
-%% setopts({sslsocket,_,_}=Sock,Opts) ->
-%% 	ssl:setopts(Sock,Opts);
-%% setopts(Sock,Opts) ->
-%% 	inets:setopts(Sock,Opts).
-
-%% proxylib:find_binary_pattern(<<"this is a string with a pattern in it">>,<<"with">>).
-
-%%
-%% Local Functions
-%%
-
-%% re(Pat) ->
-%% 	[re:run("http://l1.yimg.com/a/i/crsl/10q4/frog_flames_56x44.jpg",Pat,[{capture,all,list}]),
-%% 	 re:run("/a/i/crsl/10q4/frog_flames_56x44.jpg",Pat,[{capture,all,list}])].
-	 
-
-%% proxylib:re("(\\w*)\\s*((\\w|:|\\/|\\.)*).*").

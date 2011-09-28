@@ -46,7 +46,7 @@ start_link(Config) ->
 %% 			error_logger:error_msg("~s on line ~p~n",[lists:flatten(Msg),LNum]),
 %% 			{config_error,Config,Msg,LNum};
 		_:CErr ->
-			io:format("Could not read config from ~p.~n~p~n~n~n~n",[Config,CErr]),
+			error_logger:error_msg("Could not read config from ~p.~n~p~n~n~n~n",[Config,CErr]),
 			{startup_error,CErr}
 	end.
 
@@ -64,11 +64,16 @@ reload() ->
 
 get_proxyconfig() ->
 	try
-		case init:get_argument(proxyconfig) of
-			{ok,[[Cfg|_]|_]} ->
-				string:strip(Cfg,both,$");
+		case application:get_env(surrogate,proxy_conf) of
+			{ok,Cfg} ->
+				Cfg;
 			_ ->
-				none
+				case init:get_argument(proxyconfig) of
+					{ok,[[Cfg|_]|_]} ->
+						string:strip(Cfg,both,$");
+					_ ->
+						none
+				end
 		end
 	catch
 		_:Err ->
