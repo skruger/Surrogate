@@ -60,20 +60,24 @@ access(Code,Url,User,Extra) ->
 log_level(Lvl) ->
 	gen_server:cast(?MODULE,{log_level,Lvl}).
 
+get_logfile(Name) ->
+	case application:get_env(surrogate,Name) of
+		{ok,File} ->
+			File;
+		_ ->
+			case init:get_argument(Name) of
+				{ok,[[File|_]|_]} ->
+					string:strip(File,both,$");
+				_ ->
+					none
+			end
+	end.
+
 get_accesslog() ->
-	case init:get_argument(accesslog) of
-		{ok,[[AccessLog|_]|_]} ->
-			string:strip(AccessLog,both,$");
-		_ ->
-			none
-	end.
+	get_logfile(accesslog).
+
 get_errorlog() ->
-	case init:get_argument(errorlog) of
-		{ok,[[ErrorLog|_]|_]} ->
-			string:strip(ErrorLog,both,$");
-		_ ->
-			none
-	end.
+	get_logfile(errorlog).
 
 %% ====================================================================
 %% Server functions

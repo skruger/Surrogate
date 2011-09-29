@@ -87,14 +87,9 @@ init(Conf) ->
 	pg2:create(?MODULE),
 	pg2:join(?MODULE,self()),
 	Mode = proplists:get_value(default_auth,Conf,mnesia),
-	case proxyconf:get(mode,worker) of
-		master ->
-			mnesia:create_table(proxy_userinfo, [{attributes, record_info(fields, proxy_userinfo)}]),
-			mnesia:change_table_copy_type(proxy_userinfo,node(),disc_copies);
-		_ ->
-			ok
-	end,
-    {ok, #state{mode=Mode}}.
+	mnesia:create_table(proxy_userinfo, [{attributes, record_info(fields, proxy_userinfo)}]),
+	mnesia:change_table_copy_type(proxy_userinfo,node(),disc_copies),
+	{ok, #state{mode=Mode}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
