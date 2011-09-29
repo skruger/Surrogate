@@ -96,6 +96,8 @@ get_proxyconfig() ->
 init(State) ->
 	?INFO_MSG("Starting ~p.",[?MODULE]),
 	mnesia:create_schema([node()]),
+	
+	mnesia:change_table_copy_type(schema,node(),disc_copies),
 
 	%% Create http_admin_module table so modules can register themselves with http_admin.
 	mnesia:create_table(http_admin_module,[{attributes,record_info(fields,http_admin_module)},{local_content,true}]),
