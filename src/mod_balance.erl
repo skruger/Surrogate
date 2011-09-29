@@ -222,17 +222,17 @@ json_to_balancer2([_|R],Acc) ->
 http_api(["pool"],#http_admin{method='GET',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
 	Balancers = [balancer_to_json(Bal) || [#cluster_balancer{}=Bal] <- get_balancers_raw()],
 %% 	?ERROR_MSG("Balancers: ~n~p~n",[Balancers]),
-	{200,[],iolist_to_binary(mochijson2:encode({struct,[{"items",Balancers}]}))};
+	{200,[],iolist_to_binary(mjson:encode({struct,[{"items",Balancers}]}))};
 http_api(["pool",PoolStr],#http_admin{method='GET',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
 	Balancers = [{atom_to_list(Name),Bal} || [#cluster_balancer{name=Name}=Bal|_] <- get_balancers_raw()],
 	case proplists:get_value(PoolStr,Balancers,none) of
 		#cluster_balancer{}=Balance ->
-			{200,[],iolist_to_binary(mochijson2:encode(balancer_to_json(Balance)))};
+			{200,[],iolist_to_binary(mjson:encode(balancer_to_json(Balance)))};
 		_Bal ->
 			{404,[],<<"Pool not found">>}
 	end;
 http_api(["pool",PoolStr],#http_admin{body=Body,method='POST',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
-	Bal = json_to_balancer(mochijson2:decode(Body),list_to_atom(PoolStr)),
+	Bal = json_to_balancer(mjson:decode(Body),list_to_atom(PoolStr)),
 	mnesia:dirty_write(Bal),
 	{500,[],<<"not implemented">>};
 http_api(_,Req,_Cfg) when Req#http_admin.has_auth == true ->

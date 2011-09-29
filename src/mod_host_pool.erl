@@ -77,29 +77,29 @@ http_api(["vhost",Host],#http_admin{method='GET',has_auth=Auth}=Request,_Cfg) wh
 	case get_pool_by_host(Host) of
 		{ok,Pool} ->
 			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(atom_to_list(Pool))}]},
-			{200,[],iolist_to_binary(mochijson2:encode(Json))};
+			{200,[],iolist_to_binary(mjson:encode(Json))};
 		{error,{stopped,Pool}} ->
 			Json = {struct,[{"status",<<"warning">>},{"warning",<<"pool_not_running">>},
 							{"pool",list_to_binary(atom_to_list(Pool))}]},
-			{200,[],iolist_to_binary(mochijson2:encode(Json))};
+			{200,[],iolist_to_binary(mjson:encode(Json))};
 		{error,ErrReason} ->
 			Json = {struct,[{"status",<<"error">>},{"error",<<"pool_not_found">>}]},
-			{404,[],iolist_to_binary(mochijson2:encode(Json))}
+			{404,[],iolist_to_binary(mjson:encode(Json))}
 	end;
 http_api(["vhost",Host],#http_admin{method='DELETE',has_auth=Auth}=Request,_Cfg) when Auth == true ->
 	mnesia:dirty_delete(?MODULE,Host),
 	Json = {struct,[{"status",<<"ok">>}]},
-	{200,[],iolist_to_binary(mochijson2:encode(Json))};
+	{200,[],iolist_to_binary(mjson:encode(Json))};
 http_api(["vhost",Host,PoolStr],#http_admin{method='POST',has_auth=Auth}=Request,_Cfg) when Auth == true ->
 	Pool = list_to_atom(PoolStr),
 	case gen_balancer:is_alive(Pool) of
 		true ->
 			set_host_pool(Host,Pool),
 			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(atom_to_list(Pool))}]},
-			{200,[],iolist_to_binary(mochijson2:encode(Json))};
+			{200,[],iolist_to_binary(mjson:encode(Json))};
 		_ ->
 			Json = {struct,[{"status",<<"error">>},{"error",<<"pool_not_found">>}]},
-			{404,[],iolist_to_binary(mochijson2:encode(Json))}
+			{404,[],iolist_to_binary(mjson:encode(Json))}
 	end;
 http_api(["vhost",Host],#http_admin{has_auth=Auth}=Request,_Cfg) when Auth == true ->
 	{200,[],iolist_to_binary(["Ok: ",Host])};

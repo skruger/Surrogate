@@ -36,35 +36,35 @@ http_api(["vip",IPStr],#http_admin{method='POST',has_auth=Auth},_Conf) when Auth
 		cluster_vip_manager:disable_vip(Vip),
 		StatusMsg = io_lib:format("Posted: ~p~n",[Vip]),
 		JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
-		{200,[],iolist_to_binary(mochijson2:encode(JsonOut))}
+		{200,[],iolist_to_binary(mjson:encode(JsonOut))}
 	catch
 		_:{ErrName,ErrTup} when is_tuple(ErrTup) ->
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
 								  {"error",iolist_to_binary(io_lib:format("~p",[ErrTup]))}]},
-			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))};
+			{200,[],iolist_to_binary(mjson:encode(JsonOutErr))};
 		_:{ErrName,ErrBin} when is_list(ErrBin) ; is_binary(ErrBin) ->
 			?ERROR_MSG("~p / ~p",[ErrName,ErrBin]),
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
 								  {"error",iolist_to_binary(ErrBin)}]},
-			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))};
+			{200,[],iolist_to_binary(mjson:encode(JsonOutErr))};
 
 		_:Error ->
 			?ERROR_MSG("Update error (~p): ~p",[self(),Error]),
 			EStr = io_lib:format("Update error (~p): ~p",[self(),Error]),
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error",iolist_to_binary(EStr)}]},
-			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))}
+			{200,[],iolist_to_binary(mjson:encode(JsonOutErr))}
 	end;
 http_api(["vip",IP],#http_admin{method='DELETE',has_auth=Auth},_Conf) when Auth == true ->
 	Vip = {ip,proxylib:inet_parse(IP)},
 	cluster_vip_manager:disable_vip(Vip),
 	StatusMsg = "Disabled VIP",
 	JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
-	{200,[],iolist_to_binary(mochijson2:encode(JsonOut))};
+	{200,[],iolist_to_binary(mjson:encode(JsonOut))};
 http_api(["vip",IP],#http_admin{method='PUT',has_auth=Auth,body=JsonIn},_Conf) when Auth == true ->
 	try
 		Vip = {ip,proxylib:inet_parse(IP)},
 		{Status,JsonOut} =
-		case mochijson2:decode(JsonIn) of
+		case mjson:decode(JsonIn) of
 			{struct,JsonList} ->
 				case proplists:get_value(<<"action">>,JsonList,<<"none">>) of
 					<<"enable">> ->
@@ -80,7 +80,7 @@ http_api(["vip",IP],#http_admin{method='PUT',has_auth=Auth,body=JsonIn},_Conf) w
 				?ERROR_MSG("Bad json in POST ~p/vip/~s~n~p~n",[?MODULE,IP,BadJson]),
 				{500,[{"status",<<"error">>},{"error",<<"bad_action">>},{"status_msg",iolist_to_binary(["Invalid json."])}]}
 		end,
-		{Status,[{"Content-type","application/json"}],iolist_to_binary(mochijson2:encode({struct,JsonOut}))}
+		{Status,[{"Content-type","application/json"}],iolist_to_binary(mjson:encode({struct,JsonOut}))}
 	catch
 		_:VipErr ->
 			?ERROR_MSG("Error modifying vip: ~p~n",[VipErr]),
@@ -97,7 +97,7 @@ http_api(["vip"],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
 		Vips = [{struct,[{"address",IP},{"status",Status},{"nodes",Nodes}]} || {IP,Status,Nodes} <- VipList],
 		?ERROR_MSG("VipList: ~p~nVips: ~p~n",[VipList,Vips]),
 		JsonOut = {struct,[{"items",lists:sort(Vips)}]},
-		{200,[],iolist_to_binary(mochijson2:encode(JsonOut))}
+		{200,[],iolist_to_binary(mjson:encode(JsonOut))}
 	catch
 		_:VipErr ->
 			?ERROR_MSG("Error getting vip list: ~p~n",[VipErr]),
@@ -107,10 +107,10 @@ http_api(["listener","delete",Name],#http_admin{body=Json,has_auth=Auth}=Request
 	R = mnesia:dirty_delete(cluster_listener,list_to_atom(Name)),
 	?ERROR_MSG("Delete result: ~p~n",[R]),
 	JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",<<"Listener deleted.">>}]},
-	{200,[],iolist_to_binary(mochijson2:encode(JsonOut))};
+	{200,[],iolist_to_binary(mjson:encode(JsonOut))};
 http_api(["listener",Name],#http_admin{body=Json,has_auth=Auth}=Request,_Conf) when Auth == true ->
 	try
-		case mochijson2:decode(Json) of
+		case mjson:decode(Json) of
 			{struct,Args} ->
 				Listener0 = listener_json_record(Args,#cluster_listener{}),
 				NewName = listener_name(Listener0),
@@ -124,7 +124,7 @@ http_api(["listener",Name],#http_admin{body=Json,has_auth=Auth}=Request,_Conf) w
 						io_lib:format("Added new entry for ~p",[NewName])
 				end,
 				JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
-				{200,[],iolist_to_binary(mochijson2:encode(JsonOut))};
+				{200,[],iolist_to_binary(mjson:encode(JsonOut))};
 			Other ->
 				?ERROR_MSG("Unexpected decode result: ~n~p~n",[Other]),
 				erlang:error({json_error,io_lib:format("Json decode error: ~p",[Other])})
@@ -133,12 +133,12 @@ http_api(["listener",Name],#http_admin{body=Json,has_auth=Auth}=Request,_Conf) w
 		_:{ErrName,ErrBin} ->
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error_type",list_to_binary(atom_to_list(ErrName))},
 								  {"error",iolist_to_binary(ErrBin)}]},
-			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))};
+			{200,[],iolist_to_binary(mjson:encode(JsonOutErr))};
 		_:Error ->
 			?ERROR_MSG("Update error (~p): ~p",[self(),Error]),
 			EStr = io_lib:format("Update error (~p): ~p",[self(),Error]),
 			JsonOutErr = {struct,[{"status",<<"error">>},{"error",iolist_to_binary(EStr)}]},
-			{200,[],iolist_to_binary(mochijson2:encode(JsonOutErr))}
+			{200,[],iolist_to_binary(mjson:encode(JsonOutErr))}
 	end;
 http_api(["listeners.json"],Request,_Conf) when Request#http_admin.has_auth == true ->
 	RawListeners = 
@@ -146,9 +146,9 @@ http_api(["listeners.json"],Request,_Conf) when Request#http_admin.has_auth == t
 						  mnesia:dirty_read(cluster_listener,K) end,
 				  mnesia:dirty_all_keys(cluster_listener)),
 	JsonListeners = {struct,[{"items",[listener_to_json(L) || L <- RawListeners]}]},
-	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mochijson2:encode(JsonListeners))};
+	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mjson:encode(JsonListeners))};
 http_api(["listeners.json"],_Request,_Conf) ->
-	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mochijson2:encode({struct,[{"items",[]}]}))};
+	{200,[{"Content-Type","text/plain"}],iolist_to_binary(mjson:encode({struct,[{"items",[]}]}))};
 http_api(["postecho"],Request,_Conf) ->
 	{200,[],iolist_to_binary(Request#http_admin.body)};
 http_api(Path,Request,_Conf) when Request#http_admin.has_auth == true ->
