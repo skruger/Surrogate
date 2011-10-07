@@ -16,11 +16,11 @@
 -behaviour(filter_stream).
 
 -export([start_instance/0,process_hook/4,proxy_mod_start/1,proxy_mod_stop/1]).
--export([set_host_pool/2,get_pool_by_host/1]).
+-export([set_host_pool/2,set_host_pool/3,get_pool_by_host/1]).
 
 -export([http_api/3]).
 
--record(?MODULE,{host,pool}).
+-record(?MODULE,{host,pool,port}).
 
 %%
 %% API Functions
@@ -49,6 +49,8 @@ process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
 			case get_pool_by_host(Host) of
 				{ok,Pool} ->
 					proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,[{pool,Pool,Port,3}]);
+				{ok,Pool,PortOverride} ->
+					proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,[{pool,Pool,PortOverride,3}]);
 				_ ->
 					ok
 			end;
@@ -60,8 +62,10 @@ process_hook(_Pid,_Mode,Data,_PPC) ->
 
 get_pool_by_host(Host) ->
 	case mnesia:dirty_read(?MODULE,Host) of
-		[#?MODULE{pool=Pool}|_] ->
+		[#?MODULE{pool=Pool,port=Port}|_] ->
 			case gen_balancer:is_alive(Pool) of
+				true when is_integer(Port) ->
+					{ok,Pool,Port};
 				true ->
 					{ok,Pool};
 				_ -> {error,{stopped,Pool}}
@@ -71,12 +75,19 @@ get_pool_by_host(Host) ->
 	end.
 
 set_host_pool(Host,Pool) ->
+	set_host_pool(Host,Pool,undefined).
+
+set_host_pool(Host,Pool,Port) ->
 	F = fun() ->
-				mnesia:write(#?MODULE{host=Host,pool=Pool}) end,
+				mnesia:write(#?MODULE{host=Host,pool=Pool,port=Port}) end,
 	mnesia:transaction(F).
 
 http_api(["vhost",Host],#http_admin{method='GET',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
 	case get_pool_by_host(Host) of
+		{ok,Pool,Port} ->
+			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(atom_to_list(Pool))},
+					{"port",list_to_binary(integer_to_list(Port))}]},
+			{200,[],iolist_to_binary(mjson:encode(Json))};
 		{ok,Pool} ->
 			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(atom_to_list(Pool))}]},
 			{200,[],iolist_to_binary(mjson:encode(Json))};
@@ -97,7 +108,20 @@ http_api(["vhost",Host,PoolStr],#http_admin{method='POST',has_auth=Auth}=_Reques
 	case gen_balancer:is_alive(Pool) of
 		true ->
 			set_host_pool(Host,Pool),
-			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(atom_to_list(Pool))}]},
+			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(PoolStr)}]},
+			{200,[],iolist_to_binary(mjson:encode(Json))};
+		_ ->
+			Json = {struct,[{"status",<<"error">>},{"error",<<"pool_not_found">>}]},
+			{404,[],iolist_to_binary(mjson:encode(Json))}
+	end;
+http_api(["vhost",Host,PoolStr,PortStr],#http_admin{method='POST',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
+	Pool = list_to_atom(PoolStr),
+	Port = list_to_integer(PortStr),
+	case gen_balancer:is_alive(Pool) of
+		true ->
+			set_host_pool(Host,Pool,Port),
+			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(PoolStr)},
+					{"port",list_to_binary(PortStr)}]},
 			{200,[],iolist_to_binary(mjson:encode(Json))};
 		_ ->
 			Json = {struct,[{"status",<<"error">>},{"error",<<"pool_not_found">>}]},
