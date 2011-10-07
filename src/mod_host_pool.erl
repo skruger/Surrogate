@@ -40,8 +40,10 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
+	Opts = proplists:get_value(mod_host_pool,PPC#proxy_pass.config,[]),
+	RouteHeader = proplists:get_value(route_header,Opts,'Host'),
 	HDict = dict:from_list(Hdr#header_block.headers),
-	case dict:find('Host',HDict) of
+	case dict:find(RouteHeader,HDict) of
 		{ok,HostStr} ->
 			{host,Host,Port} = proxylib:parse_host(HostStr,80),
 			case get_pool_by_host(Host) of
@@ -73,7 +75,7 @@ set_host_pool(Host,Pool) ->
 				mnesia:write(#?MODULE{host=Host,pool=Pool}) end,
 	mnesia:transaction(F).
 
-http_api(["vhost",Host],#http_admin{method='GET',has_auth=Auth}=Request,_Cfg) when Auth == true ->
+http_api(["vhost",Host],#http_admin{method='GET',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
 	case get_pool_by_host(Host) of
 		{ok,Pool} ->
 			Json = {struct,[{"status",<<"ok">>},{"pool",list_to_binary(atom_to_list(Pool))}]},
@@ -82,15 +84,15 @@ http_api(["vhost",Host],#http_admin{method='GET',has_auth=Auth}=Request,_Cfg) wh
 			Json = {struct,[{"status",<<"warning">>},{"warning",<<"pool_not_running">>},
 							{"pool",list_to_binary(atom_to_list(Pool))}]},
 			{200,[],iolist_to_binary(mjson:encode(Json))};
-		{error,ErrReason} ->
+		{error,_ErrReason} ->
 			Json = {struct,[{"status",<<"error">>},{"error",<<"pool_not_found">>}]},
 			{404,[],iolist_to_binary(mjson:encode(Json))}
 	end;
-http_api(["vhost",Host],#http_admin{method='DELETE',has_auth=Auth}=Request,_Cfg) when Auth == true ->
+http_api(["vhost",Host],#http_admin{method='DELETE',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
 	mnesia:dirty_delete(?MODULE,Host),
 	Json = {struct,[{"status",<<"ok">>}]},
 	{200,[],iolist_to_binary(mjson:encode(Json))};
-http_api(["vhost",Host,PoolStr],#http_admin{method='POST',has_auth=Auth}=Request,_Cfg) when Auth == true ->
+http_api(["vhost",Host,PoolStr],#http_admin{method='POST',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
 	Pool = list_to_atom(PoolStr),
 	case gen_balancer:is_alive(Pool) of
 		true ->
@@ -101,8 +103,6 @@ http_api(["vhost",Host,PoolStr],#http_admin{method='POST',has_auth=Auth}=Request
 			Json = {struct,[{"status",<<"error">>},{"error",<<"pool_not_found">>}]},
 			{404,[],iolist_to_binary(mjson:encode(Json))}
 	end;
-http_api(["vhost",Host],#http_admin{has_auth=Auth}=Request,_Cfg) when Auth == true ->
-	{200,[],iolist_to_binary(["Ok: ",Host])};
 http_api(_,Req,_Cfg) when Req#http_admin.has_auth == true ->
 	{404,[],<<"Not found">>};
 http_api(_,_,_Cfg) ->

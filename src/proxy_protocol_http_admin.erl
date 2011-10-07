@@ -86,6 +86,8 @@ start_request(read, #state{client_sock=CSock}=StateData) ->
 		{ok,Data} ->
 			gen_fsm:send_event(self(),{data,Data}),
 			{next_state, parse_request, StateData};
+		{error,closed} ->
+			{stop,normal,StateData};
 		Err ->
 			?ERROR_MSG("Error in ~p:start_request(): ~p~n",[?MODULE,Err]),
 			{stop,normal,StateData}
