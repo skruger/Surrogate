@@ -89,6 +89,7 @@ init(Conf) ->
 	Mode = proplists:get_value(default_auth,Conf,mnesia),
 	mnesia:create_table(proxy_userinfo, [{attributes, record_info(fields, proxy_userinfo)}]),
 	mnesia:change_table_copy_type(proxy_userinfo,node(),disc_copies),
+	mnesia:add_table_copy(proxy_userinfo,node(),disc_copies),
 	{ok, #state{mode=Mode}}.
 
 %% --------------------------------------------------------------------

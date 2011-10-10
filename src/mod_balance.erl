@@ -27,7 +27,7 @@
 proxy_mod_start(Conf) ->
 	mnesia:create_table(cluster_balancer,[{attributes,record_info(fields,cluster_balancer)}]),
 	mnesia:change_table_copy_type(cluster_balancer,node(),disc_copies),
-	mnesia:add_table_copy(cluster_listener,node(),disc_copies),
+	mnesia:add_table_copy(cluster_balancer,node(),disc_copies),
 	proxy_protocol_http_admin:register_module(?MODULE,?MODULE,http_api),
 	Spec = {?SUP,{supervisor,start_link,[{local,?SUP},?MODULE,{supervisor,Conf}]},
 			permanent,2000,supervisor,[?MODULE]},

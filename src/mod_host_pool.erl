@@ -29,6 +29,7 @@
 proxy_mod_start(_Conf) ->
 	mnesia:create_table(?MODULE,[{attributes,record_info(fields,?MODULE)}]),
 	mnesia:change_table_copy_type(?MODULE,node(),disc_copies),
+	mnesia:add_table_copy(?MODULE,node(),disc_copies),
 	proxy_protocol_http_admin:register_module(?MODULE,?MODULE,http_api),
 	ok.
 

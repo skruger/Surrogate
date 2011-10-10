@@ -101,6 +101,7 @@ init(State) ->
 
 	%% Create http_admin_module table so modules can register themselves with http_admin.
 	mnesia:create_table(http_admin_module,[{attributes,record_info(fields,http_admin_module)},{local_content,true}]),
+	mnesia:add_table_copy(http_admin_module,node(),ram_copies),
 	mnesia:clear_table(http_admin_module),
 	mnesia:create_table(proxy_acl,[{attributes,record_info(fields,proxy_acl)},{type,bag}]),
 	mnesia:clear_table(proxy_acl),
