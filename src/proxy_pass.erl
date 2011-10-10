@@ -185,6 +185,7 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 					proxy_read_request:get_next(State#proxy_pass.request_driver),
 					{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
 				{error,ErrMsg} ->
+					?INFO_MSG("Could not connect to reverse proxy host: ~p~n",[State#proxy_pass.reverse_proxy_host]),
 					gen_fsm:send_event(self(),{error,503,lists:flatten(ErrMsg)}),
 					{next_state,proxy_error,State}
 			end

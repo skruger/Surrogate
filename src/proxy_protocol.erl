@@ -137,8 +137,8 @@ tcp_connect([{host_ssl,Host,Port,SSLConf}=ConnHost|R]) ->
 			?ERROR_MSG("Could not Connect to server: ~p ~p~n",[ConnHost,ErrConn]),
 			EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
 			{error,EMsg};
-		_Err ->
-%% 			?DEBUG_MSG("tcp_connect error: ~p ~p~nContinuing with next host in list.~n",[Host,Err]),
+		Err ->
+			?DEBUG_MSG("tcp_connect SSL error: ~p ~p~nContinuing with next host in list.~n",[Host,Err]),
 			tcp_connect(R)
 	end;
 tcp_connect([{host,Host,Port}=ConnHost|R]) ->
@@ -155,7 +155,7 @@ tcp_connect([{host,Host,Port}=ConnHost|R]) ->
 			?ERROR_MSG("Could not Connect to server: ~p ~p~n",[ConnHost,ErrConn]),
 			EMsg = io_lib:format("Internal proxy error: ~p",[ErrConn]),
 			{error,EMsg};
-		_Err ->
-%% 			?DEBUG_MSG("tcp_connect error: ~p ~p~nContinuing with next host in list.~n",[Host,Err]),
+		Err ->
+			?DEBUG_MSG("tcp_connect error: ~p ~p~nContinuing with next host in list.~n",[Host,Err]),
 			tcp_connect(R)
 	end.
