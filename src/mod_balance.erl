@@ -233,8 +233,19 @@ http_api(["pool",PoolStr],#http_admin{method='GET',has_auth=Auth}=_Request,_Cfg)
 	end;
 http_api(["pool",PoolStr],#http_admin{body=Body,method='POST',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
 	Bal = json_to_balancer(mjson:decode(Body),list_to_atom(PoolStr)),
-	mnesia:dirty_write(Bal),
-	{500,[],<<"not implemented">>};
+	case mnesia:dirty_write(Bal) of
+		ok ->
+			Json = {struct,[{"result",<<"ok">>}]},
+			{200,[],iolist_to_binary(mjson:encode(Json))};
+		Err ->
+			ErrBin = iolist_to_binary(io_lib:format("Error: ~p",[Err])),
+			Json = {struct,[{"result",<<"error">>},{"error",ErrBin}]},
+			{500,[],iolist_to_binary(mjson:encode(Json))}
+	end;
+http_api(["pool",PoolStr],#http_admin{method='DELETE',has_auth=Auth}=_Request,_Cfg) when Auth == true ->
+	Json = {struct,[{"result",<<"error">>},{"error",<<"DELETE not implemented.">>}]},
+	{500,[],iolist_to_binary(mjson:encode(Json))};
+
 http_api(_,Req,_Cfg) when Req#http_admin.has_auth == true ->
 	{404,[],<<"Not found">>};
 http_api(_,Req,_Cfg) ->
