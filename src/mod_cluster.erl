@@ -36,15 +36,20 @@ proxy_mod_start(Conf) ->
 	mnesia:add_table_index(cluster_listener,ip),
 	mnesia:change_table_copy_type(cluster_listener,node(),disc_copies),
 	mnesia:add_table_copy(cluster_listener,node(),disc_copies),
-	case proplists:get_value(start_cluster_supervisor,Conf,true) of
-		false ->
-			ok;
-		_ ->
-			application:load(cluster_supervisor),
-			application:set_env(cluster_supervisor,cluster_config,Conf),
-			application:start(cluster_supervisor),
-			cluster_supervisor_callback:add(vip_state, ?MODULE, Conf)
-	end,
+%% 	case proplists:get_value(start_cluster_supervisor,Conf,true) of
+%% 		false ->
+%% 			ok;
+%% 		_ ->
+%% 			application:load(cluster_supervisor),
+%% 			lists:foreach(fun({K,V}) -> 
+%% 								  application:set_env(cluster_supervisor,K,V);
+%% 							 (Opt) ->
+%% 								  ?WARN_MSG("Invalid cluster_supervisor option: ~p~n",[Opt])
+%% 								  end, Conf),
+%% %% 			application:set_env(cluster_supervisor,cluster_config,Conf),
+%% 			application:start(cluster_supervisor),
+%% 			cluster_supervisor_callback:add(vip_state, ?MODULE, Conf)
+%% 	end,
 	ok.
 
 proxy_mod_stop(_Conf) ->

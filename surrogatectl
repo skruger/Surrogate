@@ -1,19 +1,22 @@
 #!/usr/bin/escript
 
+main(["config"|R]) ->
+	config_cmd(R);
 main(Args) ->
-	{ok,Config} =
-	case get_config_file() of
-		not_found ->
-			io:format("No config file found."),
-			erlang:halt(2);
-		File ->
-			file:consult(File)
-	end,
+	Config = read_config(),
 	Cookie = proplists:get_value(cookie,Config,erlang:get_cookie()),
 	Node =
 	case proplists:get_value(node,Config) of
 		{Mode,CfgNode} ->
-			net_kernel:start([surrogatectl,Mode]),
+			HostCmd = 
+			case Mode of
+				shortnames -> "hostname -s";
+				longnames -> "hostname -f"
+			end,
+			HostStr = string:strip(os:cmd(HostCmd),both,$\n),
+			CtlNodeStr = lists:flatten(io_lib:format("surrogatectl~s@~s",[os:getpid(),HostStr])),
+			CtlNode = list_to_atom(CtlNodeStr),
+			net_kernel:start([CtlNode,Mode]),
 			erlang:set_cookie(node(),Cookie),
 			CfgNode;
 		_ ->
@@ -32,13 +35,49 @@ main(Args) ->
 	io:format("Invalid Input:~n~p~n",[Args]).
 
 
-decode_cmds(["user",Action|R]) ->
-	user_cmd(Action,R);
+decode_cmds(["user"|R]) ->
+	user_cmd(R);
+decode_cmds(["vip"|R]) ->
+	vip_cmd(R);
+decode_cmds(["config"|R]) ->
+	config_cmd(R);
+decode_cmds(["info"|_]) ->
+	io:format("Node: ~p~nNodes: ~p~n",[node(),nodes()]);
 decode_cmds([Cmd|Args]) ->
 	io:format("Unknown command:~p with args:~n~p~n",[Cmd,Args]).
 
 
-user_cmd("add",[Username,Pass|_]) ->
+vip_cmd(["list"|_]) ->
+	Node = get(remotenode),
+	case catch rpc:call(Node,cluster_vip_manager,get_vip_list,[]) of
+		List when is_list(List) ->
+			FormatStr = "~40s | ~8s | ~p~n",
+			io:format(FormatStr,["Address","Status",'Node List']),
+			lists:foreach(fun({IP,En,Nodes}) -> io:format(FormatStr,[format_inet(IP),atom_to_list(En),Nodes]) end, List);
+		Err ->
+			io:format("Error list vip: ~p~n",[Err])
+	end;
+vip_cmd(["disable",VipStr|_]) ->
+	Node = get(remotenode),
+	IPAddr = rpc:call(Node,proxylib,inet_parse,[VipStr]),
+	Result =  rpc:call(Node,cluster_vip_manager,disable_vip,[{ip,IPAddr}]),
+	io:format("~p~n",[Result]);
+vip_cmd(["enable",VipStr|_]) ->
+	Node = get(remotenode),
+	IPAddr = rpc:call(Node,proxylib,inet_parse,[VipStr]),
+	Result =  rpc:call(Node,cluster_vip_manager,enable_vip,[{ip,IPAddr}]),
+	io:format("~p~n",[Result]);
+vip_cmd(["setnodes",VipStr|NodeStrList]) ->
+	NodeList = [list_to_atom(N) || N <- NodeStrList],
+	Node = get(remotenode),
+	IPAddr = rpc:call(Node,proxylib,inet_parse,[VipStr]),
+	io:format("Setting nodes for ~p~n~p~n",[IPAddr,NodeList]),
+	Result =  rpc:call(Node,cluster_vip_manager,set_hostnodes,[{ip,IPAddr},NodeList]),
+	io:format("~p~n",[Result]);
+vip_cmd([Action|_Args]) ->
+	io:format("vip command has no action ~p~n",[Action]).
+
+user_cmd(["add",Username,Pass|_]) ->
 	Node = get(remotenode),
 	case catch rpc:call(Node,proxy_auth,add_user,[Username,Pass]) of
 		{atomic,ok} ->
@@ -46,7 +85,7 @@ user_cmd("add",[Username,Pass|_]) ->
 		Err ->
 			io:format("Error adding user: ~p~n",[Err])
 	end;
-user_cmd("delete",[Username|_]) ->
+user_cmd(["delete",Username|_]) ->
 	Node = get(remotenode),
 	case catch rpc:call(Node,proxy_auth,delete_user,[Username]) of
 		{atomic,ok} ->
@@ -54,7 +93,7 @@ user_cmd("delete",[Username|_]) ->
 		Err ->
 			io:format("Error deleting user: ~p~n",[Err])
 	end;
-user_cmd("list",_) ->
+user_cmd(["list"|_]) ->
 	Node = get(remotenode),
 	case catch rpc:call(Node,proxy_auth,list_users,[]) of
 		List when is_list(List) ->
@@ -62,9 +101,55 @@ user_cmd("list",_) ->
 		Err ->
 			io:format("Error adding user: ~p~n",[Err])
 	end;
-user_cmd(Action,_Args) ->
+user_cmd([Action|_Args]) ->
 	io:format("user command has no action ~p~n",[Action]).
 	
+
+config_cmd(["list"|_Args]) ->
+	Conf = read_config(),
+	lists:foreach(fun({K,V}) -> io:format("~p -> ~p~n",[K,V]); (_) -> ok end,Conf);
+config_cmd(["set","name",ShortNode|_]) ->
+	Node = list_to_atom(ShortNode),
+	Value = {longnames,Node},
+	NewConf = lists:map(fun({node,_}) -> {node,Value}; (CV) -> CV end,read_config()),
+	R = replace_config(NewConf),
+	io:format("~p~n",[R]);
+config_cmd(["set","sname",ShortNode|_]) ->
+	Node = list_to_atom(ShortNode),
+	Value = {shortnames,Node},
+	NewConf = lists:map(fun({node,_}) -> {node,Value}; (CV) -> CV end,read_config()),
+	R = replace_config(NewConf),
+	io:format("~p~n",[R]);
+config_cmd(["set","cookie",CookieStr|_]) ->
+	Cookie = list_to_atom(CookieStr),
+	NewConf = lists:map(fun({cookie,_}) -> {cookie,Cookie}; (CV) -> CV end,read_config()),
+	R = replace_config(NewConf),
+	io:format("~p~n",[R]);
+config_cmd([Action|_Args]) ->
+	io:format("config command has no action ~p~n",[Action]).
+
+replace_config(Conf) ->
+	ConfList = [ io_lib:format("~p.\n",[ConfLine]) || ConfLine <- Conf],
+	FileName =
+	case get_config_file() of
+		not_found -> ".surrogatectl";
+		File -> File
+	end,
+	file:write_file(FileName,ConfList).
+
+read_config() ->
+	case get_config_file() of
+		not_found ->
+			io:format("No config file found."),
+			erlang:halt(2);
+		File ->
+			case file:consult(File) of
+				{ok,Config} ->
+					Config;
+				_ ->
+					[]
+			end
+	end.
 
 get_config_file() ->
 	CfgFiles = [".surrogatectl",os:getenv("HOME")++"/.surrogatectl"],
@@ -79,3 +164,26 @@ get_config_file2([F|R]) ->
 		false ->
 			get_config_file2(R)
 	end.
+
+
+format_inet({ip,IP}) ->
+	format_inet(IP);
+format_inet({_,_,_,_}=IP) ->
+	lists:flatten(io_lib:format("~p.~p.~p.~p",erlang:tuple_to_list(IP)));
+format_inet({_,_,_,_,_,_,_,_}=IP) ->
+	collapsev6(lists:flatten(io_lib:format("~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B",erlang:tuple_to_list(IP))),[]).
+
+collapsev6([],Acc) ->
+	lists:reverse(Acc);
+collapsev6([$0,$:|R],[]) ->  % detect 0 in first group
+	collapsev62([$:|R],":");
+collapsev6([$:,$0,$:|R],Acc) ->
+	collapsev62([$:|R],":"++Acc);
+collapsev6([C|R],Acc) ->
+	collapsev6(R,[C|Acc]).
+collapsev62([$:,$0,$:|R],Acc) ->
+	collapsev62([$:|R],Acc);
+collapsev62([$:,$0],Acc) -> % detect 0 in last group
+	collapsev6([],[$:|Acc]);
+collapsev62(R,Acc) ->
+	collapsev6([],lists:reverse(R)++Acc).
