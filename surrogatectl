@@ -1,0 +1,81 @@
+#!/usr/bin/escript
+
+main(Args) ->
+	{ok,Config} =
+	case get_config_file() of
+		not_found ->
+			io:format("No config file found."),
+			erlang:halt(2);
+		File ->
+			file:consult(File)
+	end,
+	Cookie = proplists:get_value(cookie,Config,erlang:get_cookie()),
+	Node =
+	case proplists:get_value(node,Config) of
+		{Mode,CfgNode} ->
+			net_kernel:start([surrogatectl,Mode]),
+			erlang:set_cookie(node(),Cookie),
+			CfgNode;
+		_ ->
+			erlang:halt(1)
+	end,
+	put(remotenode,Node),		
+	%io:format("Config: ~p~n",[Config]),
+	case net_adm:ping(Node) of
+		pong ->
+			%io:format("Node connected: ~p~n",[Node]),
+			decode_cmds(Args);
+		pang ->
+			io:format("Error: node ~p could not connect to node ~p with cookie ~p~n",[node(),Node,erlang:get_cookie()])
+	end;
+main(Args) ->
+	io:format("Invalid Input:~n~p~n",[Args]).
+
+
+decode_cmds(["user",Action|R]) ->
+	user_cmd(Action,R);
+decode_cmds([Cmd|Args]) ->
+	io:format("Unknown command:~p with args:~n~p~n",[Cmd,Args]).
+
+
+user_cmd("add",[Username,Pass|_]) ->
+	Node = get(remotenode),
+	case catch rpc:call(Node,proxy_auth,add_user,[Username,Pass]) of
+		{atomic,ok} ->
+			io:format("User added: ~p~n",[Username]);
+		Err ->
+			io:format("Error adding user: ~p~n",[Err])
+	end;
+user_cmd("delete",[Username|_]) ->
+	Node = get(remotenode),
+	case catch rpc:call(Node,proxy_auth,delete_user,[Username]) of
+		{atomic,ok} ->
+			io:format("User ~p deleted.~n",[Username]);
+		Err ->
+			io:format("Error deleting user: ~p~n",[Err])
+	end;
+user_cmd("list",_) ->
+	Node = get(remotenode),
+	case catch rpc:call(Node,proxy_auth,list_users,[]) of
+		List when is_list(List) ->
+			lists:foreach(fun(User) -> io:format("~s~n",[User]) end,List);
+		Err ->
+			io:format("Error adding user: ~p~n",[Err])
+	end;
+user_cmd(Action,_Args) ->
+	io:format("user command has no action ~p~n",[Action]).
+	
+
+get_config_file() ->
+	CfgFiles = [".surrogatectl",os:getenv("HOME")++"/.surrogatectl"],
+	get_config_file2(CfgFiles).
+
+get_config_file2([]) ->
+	not_found;
+get_config_file2([F|R]) ->
+	case filelib:is_file(F) of
+		true ->
+			F;
+		false ->
+			get_config_file2(R)
+	end.

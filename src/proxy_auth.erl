@@ -136,7 +136,7 @@ handle_call({mnesia,add_user,User,Pass},_From,State) ->
 		 end,
 	Ret = mnesia:transaction(F1),
 	{reply,Ret,State};
-handle_call({mneisa,delete_user,User},_From,State) ->
+handle_call({mnesia,delete_user,User},_From,State) ->
 	F = fun() ->
 				mnesia:delete({proxy_userinfo,User})
 		end,
