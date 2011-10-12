@@ -44,7 +44,8 @@ decode_cmds(["config"|R]) ->
 decode_cmds(["info"|_]) ->
 	io:format("Node: ~p~nNodes: ~p~n",[node(),nodes()]);
 decode_cmds([Cmd|Args]) ->
-	io:format("Unknown command:~p with args:~n~p~n",[Cmd,Args]).
+	io:format("Unknown command:~p with args:~n~p~n~n",[Cmd,Args]),
+	usage().
 
 
 vip_cmd(["list"|_]) ->
@@ -75,7 +76,8 @@ vip_cmd(["setnodes",VipStr|NodeStrList]) ->
 	Result =  rpc:call(Node,cluster_vip_manager,set_hostnodes,[{ip,IPAddr},NodeList]),
 	io:format("~p~n",[Result]);
 vip_cmd([Action|_Args]) ->
-	io:format("vip command has no action ~p~n",[Action]).
+	io:format("vip command has no action ~p~n~n",[Action]),
+	usage().
 
 user_cmd(["add",Username,Pass|_]) ->
 	Node = get(remotenode),
@@ -102,7 +104,8 @@ user_cmd(["list"|_]) ->
 			io:format("Error adding user: ~p~n",[Err])
 	end;
 user_cmd([Action|_Args]) ->
-	io:format("user command has no action ~p~n",[Action]).
+	io:format("user command has no action ~p~n~n",[Action]),
+	usage().
 	
 
 config_cmd(["list"|_Args]) ->
@@ -111,22 +114,23 @@ config_cmd(["list"|_Args]) ->
 config_cmd(["set","name",ShortNode|_]) ->
 	Node = list_to_atom(ShortNode),
 	Value = {longnames,Node},
-	NewConf = lists:map(fun({node,_}) -> {node,Value}; (CV) -> CV end,read_config()),
-	R = replace_config(NewConf),
+	NewConf = lists:filter(fun({node,_}) -> false; (_) -> true end,read_config()),
+	R = replace_config([{node,Value}|NewConf]),
 	io:format("~p~n",[R]);
 config_cmd(["set","sname",ShortNode|_]) ->
 	Node = list_to_atom(ShortNode),
 	Value = {shortnames,Node},
-	NewConf = lists:map(fun({node,_}) -> {node,Value}; (CV) -> CV end,read_config()),
-	R = replace_config(NewConf),
+	NewConf = lists:filter(fun({node,_}) -> false; (_) -> true end,read_config()),
+	R = replace_config([{node,Value}|NewConf]),
 	io:format("~p~n",[R]);
 config_cmd(["set","cookie",CookieStr|_]) ->
 	Cookie = list_to_atom(CookieStr),
-	NewConf = lists:map(fun({cookie,_}) -> {cookie,Cookie}; (CV) -> CV end,read_config()),
-	R = replace_config(NewConf),
+	NewConf = lists:filter(fun({cookie,_}) -> false; (_) -> true end,read_config()),
+	R = replace_config([{cookie,Cookie}|NewConf]),
 	io:format("~p~n",[R]);
 config_cmd([Action|_Args]) ->
-	io:format("config command has no action ~p~n",[Action]).
+	io:format("config command has no action ~p~n~n",[Action]),
+	usage().
 
 replace_config(Conf) ->
 	ConfList = [ io_lib:format("~p.\n",[ConfLine]) || ConfLine <- Conf],
@@ -140,8 +144,8 @@ replace_config(Conf) ->
 read_config() ->
 	case get_config_file() of
 		not_found ->
-			io:format("No config file found."),
-			erlang:halt(2);
+			io:format("No config file found.~n"),
+			[];
 		File ->
 			case file:consult(File) of
 				{ok,Config} ->
@@ -187,3 +191,18 @@ collapsev62([$:,$0],Acc) -> % detect 0 in last group
 	collapsev6([],[$:|Acc]);
 collapsev62(R,Acc) ->
 	collapsev6([],lists:reverse(R)++Acc).
+
+usage() ->
+	io:format("surrogatectl config list -- List contents of config file~n"),
+	io:format("surrogatectl config set cookie <cookie value>~n"),
+	io:format("surrogatectl config set node sname <short node name>~n"),
+	io:format("surrogatectl config set node name <long node name>~n"),
+	io:format("surrogatectl vip list -- List vips managed by cluster_supervisor~n"),
+	io:format("surrogatectl vip enable <IP4 or IP6 address>~n"),
+	io:format("surrogatectl vip disable <IP4 or IP6 address>~n"),
+	io:format("surrogatectl vip setnodes <IP4 or IP6 address> <nodename> [<nodename> ... <nodename>]~n"),
+	io:format("surrogatectl user list -- List users in surrogate's user database~n"),
+	io:format("surrogatectl user add <username> <password>~n"),
+	io:format("surrogatectl user delete <username>~n"),
+	ok.
+	
