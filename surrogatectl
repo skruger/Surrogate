@@ -26,87 +26,16 @@ main(Args) ->
 	%io:format("Config: ~p~n",[Config]),
 	case net_adm:ping(Node) of
 		pong ->
-			%io:format("Node connected: ~p~n",[Node]),
-			decode_cmds(Args);
+			io:format("Node connected: ~p~n",[Node]),
+			R = rpc:call(Node,surrogate_cli,exec_cmds,[Args]),
+			%decode_cmds(Args);
+			io:format("~p: ~p~n",[Node,R]),
+			ok;
 		pang ->
 			io:format("Error: node ~p could not connect to node ~p with cookie ~p~n",[node(),Node,erlang:get_cookie()])
 	end;
 main(Args) ->
 	io:format("Invalid Input:~n~p~n",[Args]).
-
-
-decode_cmds(["user"|R]) ->
-	user_cmd(R);
-decode_cmds(["vip"|R]) ->
-	vip_cmd(R);
-decode_cmds(["config"|R]) ->
-	config_cmd(R);
-decode_cmds(["info"|_]) ->
-	io:format("Node: ~p~nNodes: ~p~n",[node(),nodes()]);
-decode_cmds([Cmd|Args]) ->
-	io:format("Unknown command:~p with args:~n~p~n~n",[Cmd,Args]),
-	usage().
-
-
-vip_cmd(["list"|_]) ->
-	Node = get(remotenode),
-	case catch rpc:call(Node,cluster_vip_manager,get_vip_list,[]) of
-		List when is_list(List) ->
-			FormatStr = "~40s | ~8s | ~p~n",
-			io:format(FormatStr,["Address","Status",'Node List']),
-			lists:foreach(fun({IP,En,Nodes}) -> io:format(FormatStr,[format_inet(IP),atom_to_list(En),Nodes]) end, List);
-		Err ->
-			io:format("Error list vip: ~p~n",[Err])
-	end;
-vip_cmd(["disable",VipStr|_]) ->
-	Node = get(remotenode),
-	IPAddr = rpc:call(Node,proxylib,inet_parse,[VipStr]),
-	Result =  rpc:call(Node,cluster_vip_manager,disable_vip,[{ip,IPAddr}]),
-	io:format("~p~n",[Result]);
-vip_cmd(["enable",VipStr|_]) ->
-	Node = get(remotenode),
-	IPAddr = rpc:call(Node,proxylib,inet_parse,[VipStr]),
-	Result =  rpc:call(Node,cluster_vip_manager,enable_vip,[{ip,IPAddr}]),
-	io:format("~p~n",[Result]);
-vip_cmd(["setnodes",VipStr|NodeStrList]) ->
-	NodeList = [list_to_atom(N) || N <- NodeStrList],
-	Node = get(remotenode),
-	IPAddr = rpc:call(Node,proxylib,inet_parse,[VipStr]),
-	io:format("Setting nodes for ~p~n~p~n",[IPAddr,NodeList]),
-	Result =  rpc:call(Node,cluster_vip_manager,set_hostnodes,[{ip,IPAddr},NodeList]),
-	io:format("~p~n",[Result]);
-vip_cmd([Action|_Args]) ->
-	io:format("vip command has no action ~p~n~n",[Action]),
-	usage().
-
-user_cmd(["add",Username,Pass|_]) ->
-	Node = get(remotenode),
-	case catch rpc:call(Node,proxy_auth,add_user,[Username,Pass]) of
-		{atomic,ok} ->
-			io:format("User added: ~p~n",[Username]);
-		Err ->
-			io:format("Error adding user: ~p~n",[Err])
-	end;
-user_cmd(["delete",Username|_]) ->
-	Node = get(remotenode),
-	case catch rpc:call(Node,proxy_auth,delete_user,[Username]) of
-		{atomic,ok} ->
-			io:format("User ~p deleted.~n",[Username]);
-		Err ->
-			io:format("Error deleting user: ~p~n",[Err])
-	end;
-user_cmd(["list"|_]) ->
-	Node = get(remotenode),
-	case catch rpc:call(Node,proxy_auth,list_users,[]) of
-		List when is_list(List) ->
-			lists:foreach(fun(User) -> io:format("~s~n",[User]) end,List);
-		Err ->
-			io:format("Error adding user: ~p~n",[Err])
-	end;
-user_cmd([Action|_Args]) ->
-	io:format("user command has no action ~p~n~n",[Action]),
-	usage().
-	
 
 config_cmd(["list"|_Args]) ->
 	Conf = read_config(),
@@ -168,29 +97,6 @@ get_config_file2([F|R]) ->
 		false ->
 			get_config_file2(R)
 	end.
-
-
-format_inet({ip,IP}) ->
-	format_inet(IP);
-format_inet({_,_,_,_}=IP) ->
-	lists:flatten(io_lib:format("~p.~p.~p.~p",erlang:tuple_to_list(IP)));
-format_inet({_,_,_,_,_,_,_,_}=IP) ->
-	collapsev6(lists:flatten(io_lib:format("~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B",erlang:tuple_to_list(IP))),[]).
-
-collapsev6([],Acc) ->
-	lists:reverse(Acc);
-collapsev6([$0,$:|R],[]) ->  % detect 0 in first group
-	collapsev62([$:|R],":");
-collapsev6([$:,$0,$:|R],Acc) ->
-	collapsev62([$:|R],":"++Acc);
-collapsev6([C|R],Acc) ->
-	collapsev6(R,[C|Acc]).
-collapsev62([$:,$0,$:|R],Acc) ->
-	collapsev62([$:|R],Acc);
-collapsev62([$:,$0],Acc) -> % detect 0 in last group
-	collapsev6([],[$:|Acc]);
-collapsev62(R,Acc) ->
-	collapsev6([],lists:reverse(R)++Acc).
 
 usage() ->
 	io:format("surrogatectl config list -- List contents of config file~n"),
