@@ -26,10 +26,8 @@ main(Args) ->
 	%io:format("Config: ~p~n",[Config]),
 	case net_adm:ping(Node) of
 		pong ->
-			io:format("Node connected: ~p~n",[Node]),
-			R = rpc:call(Node,surrogate_cli,exec_cmds,[Args]),
-			%decode_cmds(Args);
-			io:format("~p: ~p~n",[Node,R]),
+			%io:format("Node connected: ~p~n",[Node]),
+			rpc:call(Node,surrogate_cli,exec_cmds,[Args]),
 			ok;
 		pang ->
 			io:format("Error: node ~p could not connect to node ~p with cookie ~p~n",[node(),Node,erlang:get_cookie()])

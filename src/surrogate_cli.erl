@@ -30,7 +30,7 @@ exec_cmds([Cmd|Args]) ->
 vip_cmd(["list"|_]) ->
 	case cluster_vip_manager:get_vip_list() of
 		List when is_list(List) ->
-			FormatStr = "~40s | ~8s | ~p~n",
+			FormatStr = "~40s | ~8s | ~500p~n",
 			io:format(FormatStr,["Address","Status",'Node List']),
 			lists:foreach(fun({IP,En,Nodes}) -> io:format(FormatStr,[proxylib:format_inet(IP),atom_to_list(En),Nodes]) end, List);
 		Err ->
