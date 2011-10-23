@@ -63,16 +63,25 @@ reload() ->
 	gen_server:cast(?MODULE,reload).
 
 get_proxyconfig() ->
+	get_proxyconfig2([proxy_conf,proxy_backup_conf]).
+
+get_proxyconfig2([C|R]) ->
 	try
-		case application:get_env(surrogate,proxy_conf) of
-			{ok,Cfg} ->
-				Cfg;
+		case init:get_argument(proxyconfig) of
+			{ok,[[Cfg|_]|_]} ->
+				CfgOut = string:strip(Cfg,both,$"),
+				CfgOut;
 			_ ->
-				case init:get_argument(proxyconfig) of
-					{ok,[[Cfg|_]|_]} ->
-						string:strip(Cfg,both,$");
+				case application:get_env(surrogate,C) of
+					{ok,Cfg} ->
+						case filelib:is_file(Cfg) of
+							true ->
+								Cfg;
+							false ->
+								get_proxyconfig2(R)
+						end;  
 					_ ->
-						none
+						get_proxyconfig2(R)
 				end
 		end
 	catch
