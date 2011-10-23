@@ -194,7 +194,7 @@ balancer_to_json(#cluster_balancer{name=Name,enabled=En,balance_module=Mod,hosts
 	HostList = [list_to_binary(proxylib:format_inet(H)) || H <- Hosts],
 	CheckList = [list_to_binary(io_lib:format("~p.",[Chk])) || Chk <- Checks],
 	ConfStr = list_to_binary(io_lib:format("~p.",[Conf])),
-	{struct,[{"pool",list_to_binary(atom_to_list(Name))},{"enabled",list_to_binary(atom_to_list(En))},
+	{struct,[{"pool",list_to_binary(atom_to_list(Name))},{"enabled",En},
 			 {"balance_module",list_to_binary(atom_to_list(Mod))},{"hosts",HostList},{"checks",CheckList},
 			 {"config",ConfStr}]}.
 
@@ -203,8 +203,8 @@ json_to_balancer({struct,JsonList},Pool) ->
 
 json_to_balancer2([],Acc) ->
 	Acc;
-json_to_balancer2([{<<"enabled">>,Bin}|R],Acc) ->
-	json_to_balancer2(R,Acc#cluster_balancer{enabled=list_to_atom(binary_to_list(Bin))});
+json_to_balancer2([{<<"enabled">>,Atom}|R],Acc) ->
+	json_to_balancer2(R,Acc#cluster_balancer{enabled=Atom});
 json_to_balancer2([{<<"balance_module">>,Bin}|R],Acc) ->
 	json_to_balancer2(R,Acc#cluster_balancer{balance_module=list_to_atom(binary_to_list(Bin))});
 json_to_balancer2([{<<"hosts">>,HList}|R],Acc) ->
