@@ -45,13 +45,14 @@ start_link(Args) ->
 %%          ignore                              |
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
-init({listen_plain,{ip,IP0},Port,Props}=L) ->
+init({listen_plain,{ip,IP0},Port,Props0}=L) ->
 	erlang:send_after(20000,self(),child_check_timer),
 	?INFO_MSG("~p PLAIN listening: ~p~n",[?MODULE,L]),
-	ProtocolType = proplists:get_value(protocol,Props,undefined_listener_protocol),
+	ProtocolType = proplists:get_value(protocol,Props0,undefined_listener_protocol),
 	ListenName = lists:flatten(io_lib:format("plain_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
  	erlang:register(list_to_atom(ListenName),self()),
-	Listeners = proplists:get_value(num_listeners,Props,1),
+	Listeners = proplists:get_value(num_listeners,Props0,1),
+	Props = [{surrogate_listener_name,list_to_atom(ListenName)}|Props0],
 	Bind = {ip,proxylib:inet_parse(IP0)},
 	Opts =
 		case proxylib:inet_version(Bind) of
@@ -80,12 +81,13 @@ init({listen_plain,{ip,IP0},Port,Props}=L) ->
 init({plain,Listen,Port,Props,Parent}=_L) ->
 	{ok,accept_plain,#proxy_listener{type=plain,client_sock=Listen,listen_port=Port,proplist=Props,parent_pid=Parent}};
 
-init({listen_ssl,{ip,IP0},Port,Props}=L)->
+init({listen_ssl,{ip,IP0},Port,Props0}=L)->
 	erlang:send_after(20000,self(),child_check_timer),
-	ProtocolType = proplists:get_value(protocol,Props,undefined_listener_protocol),
+	ProtocolType = proplists:get_value(protocol,Props0,undefined_listener_protocol),
 	ListenName = lists:flatten(io_lib:format("ssl_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
  	erlang:register(list_to_atom(ListenName),self()),
-	Listeners = proplists:get_value(num_listeners,Props,1),
+	Listeners = proplists:get_value(num_listeners,Props0,1),
+	Props = [{surrogate_listener_name,list_to_atom(ListenName)}|Props0],
 	ssl:start(),
 	?INFO_MSG("~p SSL listening: ~p~n",[?MODULE,L]),
  	KeyFile = proplists:get_value(keyfile,Props),
@@ -155,9 +157,13 @@ listen_master(child_check_timer,State) ->
 
 
 accept_plain({wait,_ListenSock},State) ->
+	ListenerName = proplists:get_value(surrogate_listener_name,State#proxy_listener.proplist),
+	surrogate_stats:add_counter(ListenerName,connections,1),
 	case gen_tcp:accept(State#proxy_listener.client_sock) of
 		{ok,Sock0} ->
 			{ok,Sock} = gen_socket:create(Sock0,gen_tcp),
+			gen_socket:set_listener(Sock,ListenerName),
+			gen_socket:set_direction(Sock,front),
 			gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
 			gen_fsm:send_event(self(),get_headers),
 			proxy_protocol:handle_protocol(State#proxy_listener{client_sock=Sock}),
@@ -174,6 +180,8 @@ accept_plain({wait,_ListenSock},State) ->
 
 accept_ssl({wait,ListenSock},State) ->
 %% 	io:format("~p accept_ssl(),~p",[?MODULE,State]),
+	ListenerName = proplists:get_value(surrogate_listener_name,State#proxy_listener.proplist),
+	surrogate_stats:add_counter(ListenerName,connections,1),
 	case ssl:transport_accept(ListenSock) of
 		{ok,SSLSock} ->
 %% 			?ERROR_MSG("ssl transport accepted . ~p~n",[SSLSock]),
@@ -181,6 +189,8 @@ accept_ssl({wait,ListenSock},State) ->
 				ok ->
 %% 					?ERROR_MSG("ssl_accept completed.~n",[]),
 					{ok,Sock} = gen_socket:create(SSLSock,ssl),
+					gen_socket:set_listener(Sock,ListenerName),
+					gen_socket:set_direction(Sock,front),
 					gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
 					gen_fsm:send_event(self(),get_headers),
 					proxy_protocol:handle_protocol(State#proxy_listener{client_sock=Sock}),

@@ -103,12 +103,12 @@ http_api(["vip"],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
 			?ERROR_MSG("Error getting vip list: ~p~n",[VipErr]),
 			{500,[],<<"Internal Server Error">>}
 	end;
-http_api(["listener","delete",Name],#http_admin{body=Json,has_auth=Auth}=Request,_Conf) when Auth == true ->
+http_api(["listener","delete",Name],#http_admin{body=_Json,has_auth=Auth}=_Request,_Conf) when Auth == true ->
 	R = mnesia:dirty_delete(cluster_listener,list_to_atom(Name)),
 	?ERROR_MSG("Delete result: ~p~n",[R]),
 	JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",<<"Listener deleted.">>}]},
 	{200,[],iolist_to_binary(mjson:encode(JsonOut))};
-http_api(["listener",Name],#http_admin{body=Json,has_auth=Auth}=Request,_Conf) when Auth == true ->
+http_api(["listener",_Name],#http_admin{body=Json,has_auth=Auth}=_Request,_Conf) when Auth == true ->
 	try
 		case mjson:decode(Json) of
 			{struct,Args} ->

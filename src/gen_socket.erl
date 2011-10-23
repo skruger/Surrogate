@@ -16,14 +16,24 @@
 %% External exports
 -export([create/2,destroy/1,send/2,recv/2,recv/3,setopts/2,getopts/2,close/1,controlling_process/2,peername/1,info/1]).
 
+-export([set_listener/2,set_direction/2]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {socket,type,controlling_process,controlling_process_mon}).
+-record(state, {socket,type,controlling_process,controlling_process_mon,listener,tx_bytes,rx_bytes}).
 
 %% ====================================================================
 %% External functions
 %% ====================================================================
+
+set_listener({?MODULE,Sock},Listener) ->
+	gen_server:call(Sock,{set_listener,Listener}).
+
+set_direction({?MODULE,Sock},front) ->
+	gen_server:call(Sock,{set_direction,front_tx_bytes,front_rx_bytes});
+set_direction({?MODULE,Sock},back) ->
+	gen_server:call(Sock,{set_direction,back_tx_bytes,back_rx_bytes}).
+
 
 create(Socket,Type)  -> %% when (Type == gen_tcp) or (Type == ssl)
 %% 	?DEBUG_MSG("gen_socket:create(~p,~p)~n",[Socket,Type]),
@@ -127,9 +137,17 @@ handle_call({getopts,Opt},_From,State) when State#state.type == ssl ->
 	{reply,R,State};
 handle_call({send,Packet},_From,State) when State#state.type == ssl ->
 	R = ssl:send(State#state.socket,Packet),
+	DataLen = if is_binary(Packet) -> byte_size(Packet); true -> catch byte_size(iolist_to_binary(Packet)) end,
+	surrogate_stats:add_counter(State#state.listener,State#state.tx_bytes,DataLen),
 	{reply,R,State};
 handle_call({recv,Len,Timeout},_From,State) when State#state.type == ssl ->
 	R = ssl:recv(State#state.socket,Len,Timeout),
+	case R of
+		{ok,Data} ->
+			DataLen = byte_size(Data),
+			surrogate_stats:add_counter(State#state.listener,State#state.rx_bytes,DataLen);
+		_ -> ok
+	end,
 	{reply,R,State};
 handle_call({peername},_From,State) when State#state.type == ssl ->
 	R = ssl:peername(State#state.socket),
@@ -146,9 +164,17 @@ handle_call({getopts,Opt},_From,State) when State#state.type == gen_tcp ->
 	{reply,R,State};
 handle_call({send,Packet},_From,State) when State#state.type == gen_tcp ->
 	R = gen_tcp:send(State#state.socket,Packet),
+	DataLen = if is_binary(Packet) -> byte_size(Packet); true -> catch byte_size(iolist_to_binary(Packet)) end,
+	surrogate_stats:add_counter(State#state.listener,State#state.tx_bytes,DataLen),
 	{reply,R,State};
 handle_call({recv,Len,Timeout},_From,State) when State#state.type == gen_tcp ->
 	R = gen_tcp:recv(State#state.socket,Len,Timeout),
+	case R of
+		{ok,Data} ->
+			DataLen = byte_size(Data),
+			surrogate_stats:add_counter(State#state.listener,State#state.rx_bytes,DataLen);
+		_ -> ok
+	end,
 	{reply,R,State};
 handle_call({peername},_From,State) when State#state.type == gen_tcp ->
 	R = inet:peername(State#state.socket),
@@ -163,7 +189,13 @@ handle_call({close},_From,State) when State#state.type == gen_tcp ->
 		_:Err ->
 			?ERROR_MSG("Error closing socket: ~p~n",[Err]),
 			{reply,{error,Err}}
-	end.
+	end;
+handle_call({set_listener,Listen},_From,State) ->
+%% 	?ERROR_MSG("Setting listener: ~p~n",[Listen]),
+	{reply,ok,State#state{listener=Listen}};
+handle_call({set_direction,Tx,Rx},_From,State) ->
+%% 	?ERROR_MSG("Setting tx: ~p, rx: ~p~n",[Tx,Rx]),
+	{reply,ok,State#state{tx_bytes=Tx,rx_bytes=Rx}}.
 
 
 %% --------------------------------------------------------------------
@@ -186,6 +218,8 @@ handle_cast(_Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info({T,_Socket,Data},State) when (T == ssl) or (T == tcp) ->
+	DataLen = byte_size(Data),
+	surrogate_stats:add_counter(State#state.listener,State#state.rx_bytes,DataLen),
 	P = {?MODULE,{?MODULE,self()},Data},
 	State#state.controlling_process ! P,
 	{noreply,State};

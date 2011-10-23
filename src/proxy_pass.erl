@@ -150,6 +150,8 @@ client_send_11({request_header,#header_block{expect='100-continue'}=_ReqHdr,_Req
 	gen_fsm:send_event(self(),{error,417,"Expectation Failed",""}),
 	{next_state,proxy_error,State};
 client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
+	ListenerName = proplists:get_value(surrogate_listener_name,State0#proxy_pass.config),
+	surrogate_stats:add_counter(ListenerName,requests,1),
 	State = State0#proxy_pass{request=ReqHdr},
 %% 	?DEBUG_MSG("request_header: ~p~n",[R]),
 	case ReqHdr#header_block.request of
@@ -181,6 +183,8 @@ client_send_11({request_header,ReqHdr,_RequestSize}=_R,State0) ->
 %% 			?ERROR_MSG("RequestHeaders:~n~p~n",[RequestHeaders]),
 			case proxy_protocol:tcp_connect(State#proxy_pass.reverse_proxy_host) of
 				{ok,SSock} ->
+					gen_socket:set_listener(SSock,ListenerName),
+					gen_socket:set_direction(SSock,back),
 					gen_socket:send(SSock,RequestHeaders),
 					proxy_read_request:get_next(State#proxy_pass.request_driver),
 					{next_state,client_send_11,State#proxy_pass{server_sock=SSock}};
