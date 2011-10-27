@@ -35,13 +35,15 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 	case catch erlang:decode_packet(Mode,HdrData,[]) of
 		{ok,http_eoh,Rest} ->
 %% 			?ERROR_MSG("4: ~p~n",[Acc]),
-			URL = format_request(Acc),
-			Acc#header_block{body=Rest,headers=lists:reverse(HdrList),rstr=URL};
+			Acc1 = check_request_fields(Acc),
+			URL = format_request(Acc1),
+			Acc1#header_block{body=Rest,headers=lists:reverse(HdrList),rstr=URL};
 		{ok,{http_request,Method,URI,Ver}=RawReq,Rest} ->
 %% 			-record(request_rec,{proxytype,method,path,protocol,host,state,port}).
 			Req = 
 			case URI of
 				{abs_path,Path0} ->
+					?ERROR_MSG("abs_path: ~p~n",[Path0]),
 					#request_rec{proxytype=transparent_proxy,method=Method,path=Path0,protocol=Ver};
 				{absoluteURI,Protocol,Host,Port0,Path0} ->
 					Port =
@@ -78,6 +80,14 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 					throw(Err)
 			end
 	end.
+
+check_request_fields(#header_block{headers=Hdrs,request=#request_rec{host=Host,port=Port}=ReqRec0}=Hdr) when Host == undefined ; Port == undefined ->
+	HostStr = proplists:get_value('Host',Hdrs,"nohost"),
+	{host,HHost,HPort} = proxylib:parse_host(HostStr,80),
+	ReqRec = ReqRec0#request_rec{host=HHost,port=HPort},
+	Hdr#header_block{request=ReqRec};
+check_request_fields(Hdr) -> Hdr.
+
 
 format_request(#header_block{request=#request_rec{method=Method,path=Path,host=Host,port=Port}}) ->
 	Req = io_lib:format("~s http://~s:~p~s",[Method,Host,Port,Path]),
