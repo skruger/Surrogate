@@ -19,8 +19,6 @@
 %% gen_server callbacks
 -export([start_link/0,init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(surrogate_stats,{listener_counter,value}).
-
 -record(state, {statdict}).
 
 %% ====================================================================
@@ -38,9 +36,9 @@ add_counter(Listener,Counter,Count) ->
 http_api(["stats.json"],#http_admin{method='GET'} = Request,_Conf)  when Request#http_admin.has_auth == true ->
 	StatsList =
 	lists:map(fun(Key) ->
-					  ?ERROR_MSG("Key: ~p~n",[Key]),
+%% 					  ?ERROR_MSG("Key: ~p~n",[Key]),
 					  [#surrogate_stats{listener_counter={Listen,Ctr},value=Val}|_] = mnesia:dirty_read(surrogate_stats,Key),
-					  ?ERROR_MSG("Ok",[]),
+%% 					  ?ERROR_MSG("Ok",[]),
 					  {struct,[{"listener",list_to_binary(atom_to_list(Listen))},
 							   {"counter",list_to_binary(atom_to_list(Ctr))},
 							   {"value",list_to_binary(integer_to_list(Val))}]}
@@ -133,7 +131,7 @@ handle_info(commit,State) ->
 						 end end,
 			F2 = fun() -> lists:foreach(F1,Counters) end,
 			mnesia:transaction(F2),
-			?ERROR_MSG("Committing: ~p~n",[Counters]),
+%% 			?ERROR_MSG("Committing: ~p~n",[Counters]),
 			dict:new();
 		_ ->
 			State#state.statdict

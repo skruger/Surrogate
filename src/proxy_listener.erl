@@ -49,7 +49,7 @@ init({listen_plain,{ip,IP0},Port,Props0}=L) ->
 	erlang:send_after(20000,self(),child_check_timer),
 	?INFO_MSG("~p PLAIN listening: ~p~n",[?MODULE,L]),
 	ProtocolType = proplists:get_value(protocol,Props0,undefined_listener_protocol),
-	ListenName = lists:flatten(io_lib:format("plain_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
+	ListenName = lists:flatten(io_lib:format("plain_~s_~p_~p",[proxylib:format_inet(proxylib:inet_parse(IP0)),Port,ProtocolType])), 
  	erlang:register(list_to_atom(ListenName),self()),
 	Listeners = proplists:get_value(num_listeners,Props0,1),
 	Props = [{surrogate_listener_name,list_to_atom(ListenName)}|Props0],
@@ -84,7 +84,7 @@ init({plain,Listen,Port,Props,Parent}=_L) ->
 init({listen_ssl,{ip,IP0},Port,Props0}=L)->
 	erlang:send_after(20000,self(),child_check_timer),
 	ProtocolType = proplists:get_value(protocol,Props0,undefined_listener_protocol),
-	ListenName = lists:flatten(io_lib:format("ssl_~p_~p_~p",[proxylib:inet_parse(IP0),Port,ProtocolType])), 
+	ListenName = lists:flatten(io_lib:format("ssl_~s_~p_~p",[proxylib:format_inet(proxylib:inet_parse(IP0)),Port,ProtocolType])), 
  	erlang:register(list_to_atom(ListenName),self()),
 	Listeners = proplists:get_value(num_listeners,Props0,1),
 	Props = [{surrogate_listener_name,list_to_atom(ListenName)}|Props0],

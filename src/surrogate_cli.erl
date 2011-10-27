@@ -6,7 +6,7 @@
 %%
 %% Include files
 %%
-
+-include("surrogate.hrl").
 %%
 %% Exported Functions
 %%
@@ -16,6 +16,8 @@
 %% API Functions
 %%
 
+exec_cmds(["stats"|R]) ->
+	stats_cmd(R);
 exec_cmds(["user"|R]) ->
 	user_cmd(R);
 exec_cmds(["vip"|R]) ->
@@ -26,6 +28,13 @@ exec_cmds([Cmd|Args]) ->
 	io:format("Unknown command:~p with args:~n~p~n~n",[Cmd,Args]),
 	usage().
 
+stats_cmd(["csv"]) ->
+%% 	StatsList =
+	lists:map(fun(Key) ->
+					  [#surrogate_stats{listener_counter={Listen,Ctr},value=Val}|_] = mnesia:dirty_read(surrogate_stats,Key),
+					  io:format("~s,~s,~p~n",[atom_to_list(Listen),atom_to_list(Ctr),Val])
+			  end,mnesia:dirty_all_keys(surrogate_stats)).
+	
 
 vip_cmd(["list"|_]) ->
 	case cluster_vip_manager:get_vip_list() of
