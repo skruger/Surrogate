@@ -43,7 +43,7 @@ read_decode_block(HdrData,Sock,#header_block{headers=HdrList}=Acc) ->
 			Req = 
 			case URI of
 				{abs_path,Path0} ->
-					?ERROR_MSG("abs_path: ~p~n",[Path0]),
+%% 					?ERROR_MSG("abs_path: ~p~n",[Path0]),
 					#request_rec{proxytype=transparent_proxy,method=Method,path=Path0,protocol=Ver};
 				{absoluteURI,Protocol,Host,Port0,Path0} ->
 					Port =
