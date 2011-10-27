@@ -10,7 +10,7 @@
 
 -record(proxy_pass,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,
 					response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,
-					keepalive,gzbuff,request_peer,proxy_pass_pid}).
+					keepalive,request_peer,proxy_pass_pid}).
 
 -record(http_admin,{method,path,version,args,headers,auth,has_auth,body}).
 -record(http_admin_module,{path,module,function}).
@@ -37,6 +37,8 @@
 
 -record(gen_balancer_state,{balancer_mod,pool,active_pool,local_state,healthcheckers}).
 -record(client_info,{remote_addr,request_header}).
+
+-record(surrogate_stats,{listener_counter,value}).
 
 -define(CRITICAL(X,Y), error_logger:error_msg("CRITICAL:\n"++X,Y)).
 -define(ERROR_MSG(X,Y), error_logger:error_msg(X,Y)).

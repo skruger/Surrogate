@@ -105,7 +105,7 @@ init(Args) ->
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
 %% 	filter_stream:process_hooks(info,{proxy_pass_config,Args#proxy_pass.config},FilterRef,Args2),
-    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,gzbuff= <<>> ,proxy_pass_pid=self(),reverse_proxy_host=[]}}.
+    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,proxy_pass_pid=self(),reverse_proxy_host=[]}}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -253,7 +253,7 @@ server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_b
 	gen_socket:close(State#proxy_pass.client_sock),
 	{stop,normal,State};
 server_recv_11({response_data,Data},State) when State#proxy_pass.response_bytes_left == chunked ->
-%% 	?DEBUG_MSG("Got chunked {response_data,_}, send out as a chunk.~p~n",[self()]),
+%% 	?ERROR_MSG("Got chunked {response_data,_}, send out as a chunk.~p~n",[self()]),
 	DataLen = list_to_binary(erlang:integer_to_list(trunc(bit_size(Data)/8),16)),
 	DataOut = <<DataLen/binary,"\r\n",Data/binary,"\r\n">>,
 	gen_socket:send(State#proxy_pass.client_sock,DataOut),
@@ -265,7 +265,7 @@ server_recv_11({end_response_data,_Size},State) when State#proxy_pass.response_b
 	gen_fsm:send_event(self(),next),
 	{next_state,proxy_finish,State};
 server_recv_11({response_data,Data},State) ->
-%% 	?DEBUG_MSG("Got {response_data,_}. ~p~n",[self()]),
+%% 	?ERROR_MSG("Got {response_data,_}. ~p~n",[self()]),
 	gen_socket:send(State#proxy_pass.client_sock,Data),
 	proxy_read_response:get_next(State#proxy_pass.response_driver),
 	{next_state,server_recv_11,State};
@@ -353,18 +353,6 @@ proxy_error(Msg,State) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-%% handle_event({setproxypool,{pool,_Pool,_Port,_Retries}=PoolDef}, StateName, StateData) ->
-%% 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=[PoolDef]}};
-%% handle_event({setproxyaddr,{host,Host,Port}}, StateName, StateData) ->
-%% 	ProxyHost = [{host,IP,Port} || IP <- proxy_protocol:resolve_addr(Host,StateData#proxy_pass.config)],
-%% 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
-%% handle_event({setproxyaddr,{host_ssl,Host,Port,Conf}}, StateName, StateData) ->
-%% 	ProxyHost = [{host_ssl,IP,Port,Conf} || IP <- proxy_protocol:resolve_addr(Host,StateData#proxy_pass.config)],
-%% 	{next_state, StateName, StateData#proxy_pass{reverse_proxy_host=ProxyHost}};
-%% handle_event({addproxyaddr,{host,Host,Port}}, StateName,StateData) ->
-%% 	ExistingHosts = StateData#proxy_pass.reverse_proxy_host,
-%% 	ProxyHost = [{host,IP,Port} || IP <- proxy_protocol:resolve_addr(Host,StateData#proxy_pass.config)],
-%% 	{next_state,StateName,StateData#proxy_pass{reverse_proxy_host=ExistingHosts++ProxyHost}};
 handle_event({setproxyaddr,TargetList}, StateName,StateData) ->
 	{next_state,StateName,StateData#proxy_pass{reverse_proxy_host=TargetList}};
 handle_event({addproxyaddr,TargetList}, StateName,StateData) ->
@@ -409,7 +397,7 @@ handle_info({request_header,_,_}=Dat,StateName,StateData) ->
 	end,
 	{next_state, StateName, StateData};
 handle_info({request_data,_}=Dat,StateName,StateData) ->
-%% 	?DEBUG_MSG("Sending event: {request_data,_} in state ~p~n",[StateName]),
+%% 	?ERROR_MSG("Sending event: {request_data,_} in state ~p~n",[StateName]),
 	case filter_stream:process_hooks(request,Dat,StateData#proxy_pass.filters,StateData) of
 		delay -> ok;
 		I -> gen_fsm:send_event(self(),I)
@@ -430,26 +418,8 @@ handle_info({response_header,_,_}=Dat,StateName,StateData) ->
 			gen_fsm:send_event(self(),I)
 	end,
 	{next_state, StateName, StateData};
-handle_info({gzip_response_data,GzData0},StateName,State) ->
-	GzBuff = State#proxy_pass.gzbuff,
-	GzData = <<GzBuff/binary,GzData0/binary>>,
-	case
-		try
-			zlib:gunzip(GzData)
-		catch
-			_:Err ->
-				Err
-		end of
-		Data when is_binary(Data) ->
-%% 			?DEBUG_MSG("gzip_response_data OK! (~p bytes)~n",[trunc(bit_size(Data)/8)]),
-			self() ! {response_data,Data},
-			{next_state,StateName,State#proxy_pass{gzbuff = <<>>}};
-		_Other ->
-%% 			?DEBUG_MSG("gzip_response_data error: ~p~n",[Other]),
-			proxy_read_response:get_next(State#proxy_pass.response_driver),
-			{next_state,StateName,State#proxy_pass{gzbuff = GzData}}
-	end;
-
+handle_info({gzip_response_data_error,_UnzipErr},_StateName,StateData) ->
+	{stop,gzip_error,StateData};
 handle_info({response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
 	case filter_stream:process_hooks(response,Dat,StateData#proxy_pass.filters,StateData) of

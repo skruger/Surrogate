@@ -15,7 +15,7 @@
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--record(state,{parent,sock,headers,buff,size,bytes_sent,request,logdebug,encoding}).
+-record(state,{parent,sock,headers,buff,size,bytes_sent,request,logdebug,encoding,unzip_port}).
 
 -define(LOGDEBUG(D,CMD) , if D -> CMD ; true -> ok end ).
 
@@ -95,7 +95,7 @@ init([State]) ->
 								NoLen ->
 									?ERROR_MSG("No valid size headers received from server!  (Non compliant HTTP host)~n~p~nchunked encoding: ~p~nConnection: close: ~p~nContent-length: ~p~n~p~n",
 											   [(State#state.request)#header_block.rstr,NoChunk,NoConn,NoLen,(State#state.headers)#header_block.headers]),
-									Len = size(State#state.buff),
+%% 									Len = size(State#state.buff),
 									Hdr = (State#state.headers)#header_block{headers= (State#state.headers)#header_block.headers++[{'Connection',"close"}]},
 									{send_headers,State#state{headers=Hdr,size=close,bytes_sent=0}}
 %% 									{stop,error}
@@ -135,7 +135,7 @@ init([State]) ->
 		error ->
 			{error,StateOut};
 		_ ->
-			{ok,NextState,StateOut}
+			{ok,NextState,check_zlib_instance(StateOut)}
 	end.
 
 send_headers(run,State) ->
@@ -165,6 +165,7 @@ send_headers(run,State) ->
 		
 
 read_response(check_data,State) when State#state.bytes_sent >= State#state.size ->
+	catch zlib:close(State#state.unzip_port),
 	State#state.parent ! {end_response_data,State#state.bytes_sent},
 	gen_socket:controlling_process(State#state.sock,State#state.parent),
 	{stop,normal,State};
@@ -176,9 +177,11 @@ read_response(check_data,State) when State#state.buff == <<>> ->
 			Sent = trunc(bit_size(Data)/8) + State#state.bytes_sent,
 			{next_state,read_response,State#state{bytes_sent=Sent}};
 		{error,closed} ->
+			catch zlib:close(State#state.unzip_port),
 			State#state.parent ! {end_response_data,State#state.bytes_sent},
 			{stop,normal,State};
 		Err ->
+			catch zlib:close(State#state.unzip_port),
  			?ERROR_MSG("Receive error: ~p~n",[Err]),
 			State#state.parent ! {end_response_data,State#state.bytes_sent},
 			{stop,normal,State}
@@ -218,6 +221,7 @@ read_chunked_response(check_data,State) ->
 					{stop,normal,State}
 			end;
 		0 ->
+			%% Consume extra newline before the chunk size info.
 			<<"\r\n",Rest/binary>> = State#state.buff,
 			gen_fsm:send_event(self(),check_data),
 			{next_state,read_chunked_response,State#state{buff=Rest}};
@@ -228,6 +232,7 @@ read_chunked_response(check_data,State) ->
 			case trunc(bit_size(Chunk)/8) of
 				_ when Len == 0 ->
 					% Last chunk
+					catch zlib:close(State#state.unzip_port),
 					State#state.parent ! {end_response_data,State#state.bytes_sent},
 					gen_socket:controlling_process(State#state.sock,State#state.parent),
 					{stop,normal,State};
@@ -236,7 +241,7 @@ read_chunked_response(check_data,State) ->
 					<<SendChunk:Len/binary,R/binary>> = Chunk,
 					BytesSent = CLen + State#state.bytes_sent,
 					send_response_data(State,SendChunk),
- 					?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Got chunk:~n~p~n(~p)~n Leftover:~n~p~n",[SendChunk,trunc(bit_size(SendChunk)/8),R])),
+					?LOGDEBUG(State#state.logdebug,?DEBUG_MSG("Got chunk:~n~p~n(~p)~n Leftover:~n~p~n",[SendChunk,trunc(bit_size(SendChunk)/8),R])),
 					{next_state,read_chunked_response,State#state{buff=R,bytes_sent=BytesSent}};
 				_ ->
 					case gen_socket:recv(State#state.sock,0) of
@@ -263,12 +268,32 @@ read_chunked_response({gen_socket,_,<<Data>>},State) ->
 send_response_data(State,Data) ->
 	case State#state.encoding of
 		gzip ->
-%% 			?DEBUG_MSG("Sending gzip_response_data~n",[]),
-			State#state.parent ! {gzip_response_data,Data};
+			case catch zlib:inflate(State#state.unzip_port,Data) of
+				UnzipData0 when is_list(UnzipData0) ->
+					UnzipData = iolist_to_binary(UnzipData0),
+%% 		 			?INFO_MSG("gzip_response_data OK in proxy_read_response! (~p bytes)~n",[bit_size(Data) div 8]),
+					State#state.parent ! {response_data,UnzipData};
+				UnzipErr ->
+					?ERROR_MSG("Error unzipping data!~n~p~n~p~n",[State#state.unzip_port,UnzipErr]),
+					State#state.parent ! {gzip_response_data_error,UnzipErr}
+			end;
 		_ ->
 			State#state.parent ! {response_data,Data}
 	end.
 	
+
+check_zlib_instance(State) ->
+	if is_port(State#state.unzip_port) ->
+		   State;
+	   State#state.encoding == gzip ->
+		   Z = zlib:open(),
+		   zlib:inflateInit(Z,31),
+		   State#state{unzip_port=Z};
+	   true ->
+		   State
+	end.
+	
+
 %% --------------------------------------------------------------------
 %% Func: StateName/3
 %% Returns: {next_state, NextStateName, NextStateData}            |
