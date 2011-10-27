@@ -34,7 +34,7 @@ http_api(["vip",IPStr],#http_admin{method='POST',has_auth=Auth},_Conf) when Auth
 		Vip = {ip,proxylib:inet_parse(IPStr)},
 		cluster_vip_manager:add_vip(Vip),
 		cluster_vip_manager:disable_vip(Vip),
-		StatusMsg = io_lib:format("Posted: ~p~n",[Vip]),
+		StatusMsg = io_lib:format("Posted: ~s",[proxylib:format_inet(Vip)]),
 		JsonOut = {struct,[{"status",<<"ok">>},{"error",<<"none">>},{"status_msg",iolist_to_binary(StatusMsg)}]},
 		{200,[],iolist_to_binary(mjson:encode(JsonOut))}
 	catch
@@ -97,6 +97,16 @@ http_api(["vip"],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
 		Vips = [{struct,[{"address",IP},{"status",Status},{"nodes",Nodes}]} || {IP,Status,Nodes} <- VipList],
 		?ERROR_MSG("VipList: ~p~nVips: ~p~n",[VipList,Vips]),
 		JsonOut = {struct,[{"items",lists:sort(Vips)}]},
+		{200,[],iolist_to_binary(mjson:encode(JsonOut))}
+	catch
+		_:VipErr ->
+			?ERROR_MSG("Error getting vip list: ~p~n",[VipErr]),
+			{500,[],<<"Internal Server Error">>}
+	end;
+http_api(["nodes"],#http_admin{has_auth=Auth},_Conf) when Auth == true ->
+	try
+		Nodes = [list_to_binary(atom_to_list(N)) || N <- [node()|nodes()]],
+		JsonOut = {struct,[{"nodes",Nodes}]},
 		{200,[],iolist_to_binary(mjson:encode(JsonOut))}
 	catch
 		_:VipErr ->
