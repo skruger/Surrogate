@@ -57,7 +57,7 @@ proxy_mod_stop(_Conf) ->
 		supervisor:terminate_child(surrogate_sup, ?MODULE),
 		supervisor:delete_child(surrogate_sup, ?MODULE)
 	catch _:_ -> ok end,
-	application:stop(cluster_supervisor).
+	ok.
 
 add_listener({Type,IP,Port,Opts}) ->
 	LName = listener_name(IP,Port),
