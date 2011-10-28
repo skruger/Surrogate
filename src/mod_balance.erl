@@ -205,6 +205,8 @@ json_to_balancer2([],Acc) ->
 	Acc;
 json_to_balancer2([{<<"enabled">>,Atom}|R],Acc) ->
 	json_to_balancer2(R,Acc#cluster_balancer{enabled=Atom});
+json_to_balancer2([{<<"balance_module">>,null}|R],Acc) ->
+	json_to_balancer2(R,Acc#cluster_balancer{balance_module=balance_round_robin});
 json_to_balancer2([{<<"balance_module">>,Bin}|R],Acc) ->
 	json_to_balancer2(R,Acc#cluster_balancer{balance_module=list_to_atom(binary_to_list(Bin))});
 json_to_balancer2([{<<"hosts">>,HList}|R],Acc) ->

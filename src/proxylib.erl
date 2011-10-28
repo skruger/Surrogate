@@ -15,7 +15,7 @@
 %% -export([send/2,setopts/2]).
 
 -export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
--export([inet_parse/1,format_inet/1,inet_version/1,inet_getaddr/1,inet_getaddr/2,uri_unescape/1]).
+-export([inet_parse/1,format_inet/1,inet_version/1,inet_getaddr/1,inet_getaddr/2,uri_unescape/1,string_to_term/1]).
 
 %% -export([re/1]).
 %%
@@ -275,3 +275,16 @@ uri_unescape2([$% ,H1,H2|R],Acc) ->
 	end;
 uri_unescape2([C|R],Acc) ->
 	uri_unescape2(R,[C|Acc]).
+
+string_to_term(TermStr) ->
+	case erl_scan:string(TermStr) of
+		{ok,Tokens,_} ->
+			case erl_parse:parse_term(Tokens) of
+				{ok,Term} ->
+					Term;
+				Error ->
+					erlang:throw({parse_error,Error})
+			end;
+		ScanError ->
+			erlang:throw({scan_parse_error,ScanError})
+	end.
