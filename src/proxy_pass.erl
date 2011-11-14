@@ -234,8 +234,12 @@ server_recv_11({response_header,ResHdr,ResponseSize},State) ->
 	ResponseHeaders = iolist_to_binary(ResHeaders),
 %% 	?ERROR_MSG("ResponseHeaders:~n~p~n",[ResponseHeaders]),
 	gen_socket:send(State#proxy_pass.client_sock,ResponseHeaders),
-	case ResponseSize of
-		0 ->
+	case {ResponseSize,Code} of
+		{_,101} ->
+%% 			?ERROR_MSG("Upgrade to websocket~n",[]),
+			proxy_connect:bridge_client_server(State#proxy_pass.client_sock,State#proxy_pass.server_sock),
+			{stop,normal,State};
+		{0,_} ->
 			gen_fsm:send_event(self(),next),
 			{next_state,proxy_finish,State};
 		_ ->

@@ -10,7 +10,7 @@
 %%
 %% Exported Functions
 %%
--export([start/2,send_headers/2,read_response/2,read_chunked_response/2,get_next/1]).
+-export([start/2,stop/1,send_headers/2,read_response/2,read_chunked_response/2,get_next/1]).
 
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
@@ -55,6 +55,9 @@ start(Sock,Request) ->
 			?ERROR_MSG("Error in ~p:start(): ~p~n~p~n",[?MODULE,CErr,Request]),
 			CErr
 	end.
+
+stop({?MODULE,Pid}) ->
+	gen_fsm:sync_send_all_state_event(Pid,{stop_return_control,self()}).
 
 get_next({?MODULE,Pid}) ->
 %% 	?DEBUG_MSG("Requesting next: ~p~n",[self()]),
@@ -143,6 +146,7 @@ send_headers(run,State) ->
 	Protocol = ((State#state.headers)#header_block.response)#response_rec.protocol,
 	ResponseSize = case State#state.encoding of
 			   gzip when (Protocol == {1,0}) or (State#state.size == close) -> close;
+			   gzip when State#state.size == upgrade -> upgrade;
 			   gzip when (Protocol == {1,1}) -> chunked;
 			   _ -> State#state.size
 		   end,
@@ -153,6 +157,9 @@ send_headers(run,State) ->
 			{next_state,read_chunked_response,State};
 		close ->
 			{next_state,read_response,State};
+		upgrade ->
+			gen_socket:controlling_process(State#state.sock, State#state.parent),
+			{stop,normal,State};
 		0 ->
 			{next_state,read_response,State};
 		Size when Size > 0 -> 
@@ -322,6 +329,11 @@ handle_event(_Event, StateName, StateData) ->
 %%          {stop, Reason, NewStateData}                          |
 %%          {stop, Reason, Reply, NewStateData}
 %% --------------------------------------------------------------------
+handle_sync_event({stop_return_control,Pid},_From,_StateName,StateData) when Pid == StateData#state.parent ->
+	gen_socket:controlling_process(StateData#state.sock, Pid),
+	{stop,normal,{ok,StateData#state.sock},StateData};
+handle_sync_event({stop_return_control,_Pid},_From,StateName,StateData) ->
+	{reply,{error,not_parent},StateName,StateData};
 handle_sync_event(_Event, _From, StateName, StateData) ->
     Reply = ok,
     {reply, Reply, StateName, StateData}.
