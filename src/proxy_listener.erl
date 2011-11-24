@@ -105,12 +105,13 @@ init({listen_ssl,{ip,IP0},Port,Props0}=L)->
 		Err ->
  			error_logger:error_msg("Error on ssl listen() ~p~nSleeping before retry.~n",[Err]),
 			timer:sleep(5000),
-			case catch gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
+			Opts2 = Opts++[{reuseaddr,true}],
+			case catch gen_tcp:listen(Port,Opts2) of
 				{ok,Listen} ->
 					gen_fsm:send_event(self(),check_listeners),
 					{ok,listen_master,#socket_state{type=ssl,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 				Err2 ->
-					?ERROR_MSG("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts,Err2]),
+					?ERROR_MSG("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts2,Err2]),
 					{stop,Err2}
 			end
 	end;
