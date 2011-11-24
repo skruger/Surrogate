@@ -55,7 +55,6 @@ start_balancers([Bal|R],Type) ->
 				{error,_} = SupErr ->
 					?CRITICAL("Error starting pool with ~p config: ~p~n~p~n",[Type,Bal,SupErr]);
 				_ -> ok
-						
 			end;
 		_ ->
 			?ERROR_MSG("Invalid balanceer definition (~p): ~p~n",[Type,Bal]),
@@ -237,6 +236,7 @@ http_api(["pool",PoolStr],#http_admin{body=Body,method='POST',has_auth=Auth}=_Re
 	Bal = json_to_balancer(mjson:decode(Body),list_to_atom(PoolStr)),
 	case mnesia:dirty_write(Bal) of
 		ok ->
+			balancer_refresh_config(PoolStr),
 			Json = {struct,[{"result",<<"ok">>}]},
 			{200,[],iolist_to_binary(mjson:encode(Json))};
 		Err ->
