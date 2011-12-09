@@ -57,8 +57,10 @@ start_link() ->
 
 init([]) ->
 	ListenSpec = proxyconf:get(listeners,[]),
-	ListenPropList = ip_listener_list(ListenSpec,[]),
-	?DEBUG_MSG("Got listeners: ~n~p~n",[ListenPropList]),
+	ListenPropList0 = ip_listener_list(ListenSpec,[]),
+	?DEBUG_MSG("Got listeners: ~n~p~n",[ListenPropList0]),
+	ListenPropList = ip_listener_filter_valid(ListenPropList0),
+	?DEBUG_MSG("Using listeners: ~n~p~n",[ListenPropList]),
 	LCSpecs = lists:map(fun(X) -> ip_listener_childspec(X,ListenPropList) end,proplists:get_keys(ListenPropList)),
 	?DEBUG_MSG("Listener childspecs: ~n~p~n",[LCSpecs]),
 	Children = lists:flatten([listen_childspec(proplists:get_all_values({ip,{0,0,0,0,0,0,0,0}},ListenPropList),[])++
@@ -89,8 +91,8 @@ ip_listener_childspec({ip,{0,0,0,0,0,0,0,0}},_) -> [];
 ip_listener_childspec({ip,_}=Key,ListenPropList) ->
 	ListenSpecs = proplists:get_all_values(Key,ListenPropList),
 	SupName = ip_sup_name(Key),
-	{SupName,{supervisor,start_link,[{local,SupName},?MODULE,{Key,ListenSpecs}]},
-	 permanent,10000,supervisor,[]}.
+	[{SupName,{supervisor,start_link,[{local,SupName},?MODULE,{Key,ListenSpecs}]},
+	 permanent,10000,supervisor,[]}].
 		
 		
 	
@@ -106,6 +108,13 @@ ip_listener_list([L|R],Acc) ->
 		_ ->
 			ip_listener_list(R,Acc)
 	end.
+
+ip_listener_filter_valid(Listeners) ->
+	IPList0 = [ IP || {network_interfaces,_Host,_Dev,IP,_Alias} <- cluster_network_manager:get_interface_proplist()],
+	IPList = [{ip,{0,0,0,0}},{ip,{0,0,0,0,0,0,0,0}}|IPList0],
+	lists:filter(fun({IP,_}) ->
+						 lists:member(IP,IPList)
+				 end,Listeners).
 
 listen_childspec([],Acc) ->
 	Acc;
