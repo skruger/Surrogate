@@ -74,6 +74,12 @@ init([]) ->
 		   permanent,
 		   10000,
 		   supervisor,
+		   []},
+		  {listener_helper,
+		   {listener_helper,start_link,[]},
+		   permanent,
+		   10000,
+		   worker,
 		   []}
 		  
 		 ]}}.

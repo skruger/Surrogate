@@ -14,7 +14,7 @@
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/0,make_childspec/1,ip_listener_list/2,ip_sup_name/1]).
+-export([start_link/0,make_childspec/1,ip_listener_list/2,ip_sup_name/1,ip_listener_childspec/1]).
 
 %% --------------------------------------------------------------------
 %% Internal exports
@@ -94,7 +94,10 @@ ip_listener_childspec({ip,_}=Key,ListenPropList) ->
 	[{SupName,{supervisor,start_link,[{local,SupName},?MODULE,{Key,ListenSpecs}]},
 	 permanent,10000,supervisor,[]}].
 		
-		
+ip_listener_childspec({ip,_}= IP) ->
+	SupName = ip_sup_name(IP),
+	{SupName,{supervisor,start_link,[{local,SupName},?MODULE,{IP,[]}]},
+	 permanent,10000,supervisor,[]}.
 	
 ip_sup_name({ip,IP}) ->
 	list_to_atom(lists:flatten(io_lib:format("listener_~s_sup",[proxylib:format_inet(IP)]))).
