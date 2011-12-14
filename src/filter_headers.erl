@@ -16,6 +16,8 @@
 
 -import(proxylib,[format_inet/1]).
 
+-record(rewrite_host,{headers,config}).
+
 %%
 
 start_instance() ->
@@ -51,9 +53,53 @@ process_hook(_Pid,request,{request_header,ReqHdr,RequestSize},PPC) ->
 			_ ->
 				HBlock3
 		end,
-	{request_header,ReqHdr#header_block{headers=HBlock4},RequestSize};
+	RewriteHosts = proplists:get_all_values(rewrite_host,RawProps),
+%% 	?ERROR_MSG("Got rewrite hosts: ~p~n~p~n",[RewriteHosts,RawProps]),
+	#rewrite_host{headers=HBlock5} =
+					 lists:foldl(fun rewrite_hosts/2,
+								 #rewrite_host{headers=HBlock4,config=PPC},
+								 RewriteHosts),
+	{request_header,ReqHdr#header_block{headers=HBlock5},RequestSize};
 process_hook(_Ref,_Type,Data,_PPC) ->
 	Data.
+
+rewrite_hosts({replace,Match,Replace},#rewrite_host{headers=HBlock}=Acc) ->
+	Dict = dict:from_list(HBlock),
+	case dict:find('Host',Dict) of
+		{ok,Host} ->
+			case re:replace(Host,Match,Replace) of
+				Host ->
+					Acc;
+				NewHost ->
+					NewDict = dict:store('Host',NewHost,Dict),
+					Acc#rewrite_host{headers=dict:to_list(NewDict)}
+			end;
+		HostErr ->
+			?ERROR_MSG("~p: Host header not found!~n~p~n",[?MODULE,HostErr]),
+			Acc
+	end;
+rewrite_hosts({replace,Match,Replace,RedirectSpec}=RSpec,#rewrite_host{headers=HBlock,config=PPC}=Acc) ->
+	Dict = dict:from_list(HBlock),
+	case dict:find('Host',Dict) of
+		{ok,Host} ->
+			case re:replace(Host,Match,Replace) of
+				Host ->
+					Acc;
+				NewHost ->
+					NewDict = dict:store('Host',NewHost,Dict),
+					{host,_Host,_Port} = TargetHost = proxylib:parse_host(RedirectSpec,80),
+					TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_pass.config),
+%% 		 			?ERROR_MSG("~p TargetList: ~p~n",[?MODULE,TargetList]),
+					proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,TargetList),
+					Acc#rewrite_host{headers=dict:to_list(NewDict)}
+			end;
+		HostErr ->
+			?ERROR_MSG("~p: Host header not found!~n~p~n",[?MODULE,HostErr]),
+			Acc
+	end;
+rewrite_hosts(Opt,Acc) ->
+	?ERROR_MSG("Unrecognized rewrite host option in ~p.~n~p~n",[?MODULE,Opt]),
+	Acc.
 
 parse_props([],PropAcc,AddAcc,RemAcc) ->
 	{PropAcc,AddAcc,RemAcc};
