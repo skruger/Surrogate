@@ -22,8 +22,6 @@ start_instance() -> {?MODULE,?MODULE}.
 
 process_hook(_,response,{response_header,_,chunked}=Data,_PPC) ->
 	Data;
-process_hook(_,response,{response_header,_,close}=Data,_PPC) ->
-	Data;
 process_hook(_,response,{response_header,_,0}=Header,_PPC) ->
 	Header;
 process_hook(_,response,{response_header,Hdr,_Length}=Header,_PPC) ->
