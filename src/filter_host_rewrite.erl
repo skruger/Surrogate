@@ -34,32 +34,54 @@ process_hook(_Pid,request,{request_header,ReqHdr,RequestSize},PPC) ->
 								 #rewrite_host{headers=HBlock0,config=PPC},
 								 RewriteHosts),
 	{request_header,ReqHdr#header_block{headers=HBlock1},RequestSize};
-process_hook(_Pid,response,{response_header,ResHdr,ResponseSize}=Data,_PPC) ->
+process_hook(_Pid,response,{response_header,ResHdr,ResponseSize}=_Data,_PPC) ->
 	HBlock0 = ResHdr#header_block.headers,
 	case {get({?MODULE,rewrite}),proplists:get_value('Content-Type',HBlock0,none)} of
 		{undefined,_Type} ->
 %% 			?ERROR_MSG("Do nothing (host not rewritten)~nContent type: ~p~n",[Type]),
 			ok;
-		{_,"text/html"++_Rest} when ResponseSize /= close ->
-			?ERROR_MSG("Can't rewrite responses that are fixed length!  Enable filter_force_chunk. (~p)~n",
+		{_,"text/html"++_Rest} when ResponseSize /= close,
+									ResponseSize /= chunked ->
+			?ERROR_MSG("Can't rewrite responses that are fixed length!  "
+						"Enable filter_force_chunk. (~p)~n",
 					   [ResponseSize]),
 			erase({?MODULE,rewrite});
-		{_,"text/html"++_Rest} ->
-%% 			?ERROR_MSG("Rewriting response:~n~p~nRequestSize:~p~n",[Data,ResponseSize]),
-			ok;
-		{_,Other} ->
-			?ERROR_MSG("Not rewriting content type: ~p~n~p~n",[Other,HBlock0]),
+		{_,"text/"++_Rest} -> ok;
+		{_,_Other} ->
+%% 			?ERROR_MSG("Not rewriting content type: ~p~n~p~n",[Other,HBlock0]),
 			erase({?MODULE,rewrite})
 	end,
-	Data;
+	Dict1 = lists:foldl(fun(Item,DictAcc) -> dict:erase(Item,DictAcc) end,
+						dict:from_list(HBlock0),
+						['Etag','Last-Modified','Expires']),
+	Dict2 = dict:store('X-Surrogate-Host-Rewrite',"true",Dict1),
+	Dict3 =
+		case dict:find('Location',Dict2) of
+			{ok,Location} ->
+				case get({?MODULE,rewrite}) of
+					undefined ->
+						Dict2;
+					{OldHost,NewHost} ->
+						LocIoBin = re:replace(Location,NewHost,OldHost,[global]),
+						NewLocationBin = iolist_to_binary(LocIoBin),
+						NewLocation = binary_to_list(NewLocationBin),
+						?ERROR_MSG("Redirect rewrite:~n"
+									"Location: ~p~nNewLocation: ~p~n",
+								   [Location,NewLocation]),
+						dict:store('Location',NewLocation,Dict2)
+				end;
+			_ -> Dict2
+		end,
+	HBlock1 = dict:to_list(Dict3),
+	{response_header,ResHdr#header_block{headers=HBlock1},ResponseSize};
 process_hook(_Pid,response,{response_data,Data},_PPC) ->
 	case get({?MODULE,rewrite}) of
 		undefined ->
 			{response_data,Data};
 		{OldHost,NewHost} ->
 			NewData = iolist_to_binary(re:replace(Data,NewHost,OldHost,[global])),
-%% 			?ERROR_MSG("Rewrite~nfrom: ~p~nto: ~p~ndata:~n~p~nnewdata:~n~p~n",
-%% 					   [NewHost,OldHost,Data,NewData]),
+%% 			?ERROR_MSG("Rewrite~nfrom: ~p~nto: ~p~n",
+%% 					   [NewHost,OldHost]),
 			{response_data,NewData}
 	end;
 process_hook(_Ref,_Type,Data,_PPC) ->
@@ -99,7 +121,8 @@ rewrite_hosts({replace,Match,Replace,RedirectSpec}=_RSpec,
 	case replace_host(HBlock,Match,Replace) of
 		{ok,Headers} ->
 			{host,_Host,_Port} = TargetHost = proxylib:parse_host(RedirectSpec,80),
-			TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_pass.config),
+			TargetList = proxy_protocol:resolve_target_list(TargetHost,
+															PPC#proxy_pass.config),
 %% 		 	?ERROR_MSG("~p TargetList: ~p~n",[?MODULE,TargetList]),
 			proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,TargetList),
 			Acc#rewrite_host{headers=Headers};
