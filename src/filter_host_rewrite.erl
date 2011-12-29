@@ -51,16 +51,18 @@ process_hook(_Pid,response,{response_header,ResHdr,ResponseSize}=_Data,_PPC) ->
 %% 			?ERROR_MSG("Not rewriting content type: ~p~n~p~n",[Other,HBlock0]),
 			erase({?MODULE,rewrite})
 	end,
-	Dict1 = lists:foldl(fun(Item,DictAcc) -> dict:erase(Item,DictAcc) end,
-						dict:from_list(HBlock0),
-						['Etag','Last-Modified','Expires']),
-	Dict2 = dict:store('X-Surrogate-Host-Rewrite',"true",Dict1),
-	Dict3 =
-		case dict:find('Location',Dict2) of
+	HBlock1 = lists:filter(fun({'Etag',_}) -> false;
+							  ({'Last-Modified',_}) -> false;
+							  ({'Expires',_}) -> false;
+							  (_) -> true end, HBlock0),
+	HBlock2 = [{'X-Surrogate-Host-Rewrite',"true"}|HBlock1],
+	Dict = dict:from_list(HBlock2),
+	HBlock3 =
+		case dict:find('Location',Dict) of
 			{ok,Location} ->
 				case get({?MODULE,rewrite}) of
 					undefined ->
-						Dict2;
+						HBlock2;
 					{OldHost,NewHost} ->
 						LocIoBin = re:replace(Location,NewHost,OldHost,[global]),
 						NewLocationBin = iolist_to_binary(LocIoBin),
@@ -68,12 +70,14 @@ process_hook(_Pid,response,{response_header,ResHdr,ResponseSize}=_Data,_PPC) ->
 						?ERROR_MSG("Redirect rewrite:~n"
 									"Location: ~p~nNewLocation: ~p~n",
 								   [Location,NewLocation]),
-						dict:store('Location',NewLocation,Dict2)
+						HBlockNoLoc = lists:filter(fun({'Location',_}) -> false;
+													 (_) -> true end,HBlock2),
+						[{'Location',NewLocation}|HBlockNoLoc]
 				end;
-			_ -> Dict2
+			_ -> HBlock2
 		end,
-	HBlock1 = dict:to_list(Dict3),
-	{response_header,ResHdr#header_block{headers=HBlock1},ResponseSize};
+%% 	?ERROR_MSG("HBlock3: ~p~n",[HBlock3]),
+	{response_header,ResHdr#header_block{headers=HBlock3},ResponseSize};
 process_hook(_Pid,response,{response_data,Data},PPC) ->
 	case get({?MODULE,rewrite}) of
 		undefined ->
@@ -115,8 +119,10 @@ process_hook(_Ref,_Type,Data,_PPC) ->
 
 %% returns: {ok,Newheaders} | false
 replace_host(Headers,Match,Replace) ->
-	Dict = dict:from_list(Headers),
-	case dict:find('Host',Dict) of
+	case proplists:get_value('Host',Headers,error) of
+		error ->
+			?ERROR_MSG("~p: Host header not found!~n~p~n",[?MODULE,Headers]),
+			false;
 		{ok,Host} ->
 			case re:replace(Host,Match,Replace) of
 				Host ->
@@ -125,14 +131,13 @@ replace_host(Headers,Match,Replace) ->
 					NewHost = binary_to_list(iolist_to_binary(NewHostIo)),
 					put({?MODULE,rewrite},{Host,NewHost}),
 					%% Disable cache control headers when rewriting.
-					Dict1 = dict:erase('Last-Modified',Dict),
-					Dict2 = dict:erase('Etag',Dict1),
-					NewDict = dict:store('Host',NewHost,Dict2),
-					{ok,dict:to_list(NewDict)}
-			end;
-		HostErr ->
-			?ERROR_MSG("~p: Host header not found!~n~p~n",[?MODULE,HostErr]),
-			false
+					Headers1 =
+					lists:filter(fun({'Last-Modified',_}) -> false;
+									({'Etag',_}) -> false;
+									({'Host',_}) -> false;
+									(_) -> true end, Headers),
+					{ok,[{'Host',NewHost}|Headers1]}
+			end
 	end.
 
 rewrite_hosts({replace,Match,Replace},#rewrite_host{headers=HBlock}=Acc) ->
