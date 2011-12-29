@@ -451,6 +451,9 @@ handle_info({request_filter_response,_}=CErr,StateName,State) ->
 handle_info(get_request_data,StateName,State) ->
 	proxy_read_request:get_next(State#proxy_pass.request_driver),
 	{next_state,StateName,State};
+handle_info(get_response_data,StateName,State) ->
+	proxy_read_response:get_next(State#proxy_pass.response_driver),
+	{next_state,StateName,State};
 handle_info(Info, StateName, StateData) ->
 	?ERROR_MSG("Unmatched info: ~p~n",[Info]),
     {next_state, StateName, StateData}.

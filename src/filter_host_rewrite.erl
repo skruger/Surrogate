@@ -74,15 +74,41 @@ process_hook(_Pid,response,{response_header,ResHdr,ResponseSize}=_Data,_PPC) ->
 		end,
 	HBlock1 = dict:to_list(Dict3),
 	{response_header,ResHdr#header_block{headers=HBlock1},ResponseSize};
-process_hook(_Pid,response,{response_data,Data},_PPC) ->
+process_hook(_Pid,response,{response_data,Data},PPC) ->
 	case get({?MODULE,rewrite}) of
 		undefined ->
 			{response_data,Data};
-		{OldHost,NewHost} ->
-			NewData = iolist_to_binary(re:replace(Data,NewHost,OldHost,[global])),
-%% 			?ERROR_MSG("Rewrite~nfrom: ~p~nto: ~p~n",
-%% 					   [NewHost,OldHost]),
-			{response_data,NewData}
+		{_OldHost,_NewHost} ->
+			case get({?MODULE,response_data}) of
+				undefined ->
+					put({?MODULE,response_data},Data);
+				ExistingData ->
+					put({?MODULE,response_data},[ExistingData,Data])
+			end,
+			PPC#proxy_pass.proxy_pass_pid ! get_response_data,
+			delay
+	end;
+process_hook(_Pid,response,{end_response_data,_} = EndMsg,PPC) ->
+	case get({?MODULE,response_data}) of
+		undefined ->
+			EndMsg;
+		DataList ->
+%% 			?ERROR_MSG("Ending response:~n~p~n",[DataList]),
+			OrigResponse = iolist_to_binary(DataList),
+			NewResponse =
+			case get({?MODULE,rewrite}) of
+				undefined ->
+					OrigResponse;
+				{OldHost,NewHost} ->
+%% 					?ERROR_MSG("Rewrite~nfrom: ~p~nto: ~p~n",
+%% 							   [NewHost,OldHost]),
+					iolist_to_binary(re:replace(OrigResponse,NewHost,OldHost,[global]))
+			end,
+			PPC#proxy_pass.proxy_pass_pid ! {filter_delay,{response_data,NewResponse}},
+			PPC#proxy_pass.proxy_pass_pid ! {filter_delay,EndMsg},
+			erase({?MODULE,rewrite}),
+			erase({?MODULE,response_data}),
+			delay
 	end;
 process_hook(_Ref,_Type,Data,_PPC) ->
 	Data.
