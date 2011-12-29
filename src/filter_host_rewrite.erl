@@ -123,7 +123,7 @@ replace_host(Headers,Match,Replace) ->
 		error ->
 			?ERROR_MSG("~p: Host header not found!~n~p~n",[?MODULE,Headers]),
 			false;
-		{ok,Host} ->
+		Host ->
 			case re:replace(Host,Match,Replace) of
 				Host ->
 					false;
