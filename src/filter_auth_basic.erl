@@ -20,7 +20,7 @@
 start_instance() ->
 	{?MODULE,?MODULE}.
 
-process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_pass{config=Conf}=_PPC) ->
+process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_txn{config=Conf}=_PPC) ->
 	?ERROR_MSG("ProxyPass: ~p~n",[Conf]),
 	AuthRequestResponse = {request_filter_response,<<"HTTP/1.1 407 Auth required\r\nProxy-Authenticate: Basic realm=\"Surrogate\"\r\nConnection: close\r\n\r\n">>},
 	Dict = dict:from_list(ReqHdr#header_block.headers),

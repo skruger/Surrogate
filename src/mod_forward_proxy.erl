@@ -57,10 +57,12 @@ process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
 	case proplists:get_value('Host',Hdr#header_block.headers,none) of
 		HostStr when is_list(HostStr) ->
 			{host,_Host,_Port} = TargetHost = proxylib:parse_host(HostStr,80),
-			TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_pass.config),
+			TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_txn.config),
 %% 			?ERROR_MSG("TargetList: ~p~n",[TargetList]),
-			proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,TargetList);
-		_ -> ok
+			proxy_client:setproxyaddr(PPC#proxy_txn.proxy_client_pid,TargetList);
+		Err ->
+      ?ERROR_MSG("Couldn't get host header for ~p~n",[?MODULE]),
+      ok
 	end,
 	HBlock;
 process_hook(_Pid,_Mode,Data,_PPC) ->

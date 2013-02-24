@@ -15,7 +15,7 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1,start/2,start_remote/2,setproxyaddr/2,addproxyaddr/2]).
+-export([start/1,setproxyaddr/2,addproxyaddr/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -27,57 +27,13 @@
 
 %% -define(LOG(N,P),lists:flatten(io_lib:format(~p)
 
-%% -record(state, {}).
-
 %% ====================================================================
 %% External functions
 %% ====================================================================
 
+
 start(Args) ->
-	case proplists:get_value(worker_pool,Args#proxy_pass.config,'NONE') of
-		'NONE' ->
-			do_start(Args);
-		WorkerPool ->
-			case catch mod_worker_manager:next_worker(WorkerPool) of
-				{ok,Worker} ->
-					start(Worker,Args);
-				_ ->
-					do_start(Args)
-			end
-	end.
-
-start(Node,Args) when Node == node() ->
-%% 	?WARN_MSG("Attempting remote start to self (~p).~n",[Node]),
-	do_start(Args);
-start(Node,Args) ->
-	case net_adm:ping(Node) of
-		pong ->
-			spawn(Node,?MODULE,start_remote,[self(),Args]),
-%% 			?DEBUG_MSG("Starting remote ~p on ~p.~n",[?MODULE,Node]),
-			receive
-				Ret -> Ret
-			after 1500 -> 
-					?ERROR_MSG("Timeout passing traffic to worker node (~p).  Starting locally.~n",[Node]),
-					do_start(Args)
-			end;
-		pang ->
-			?CRITICAL("Could not find node: ~p.  Starting locally.~n",[Node]),
-			do_start(Args)
-	end.
-
-do_start(Args) ->
 	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
-
-
-start_remote(Parent,Args) ->
-	Ret = do_start(Args),
-	erlang:send(Parent,Ret),
-%% 	?DEBUG_MSG("~p started on node ~p.~n",[?MODULE,node()]),
-	ok.
-
-%% Set proxy address to LB pool.
-%% setproxypool(Pid,Pool,Port,Retries) ->
-%% 	gen_fsm:send_all_state_event(Pid,{setproxypool,{pool,Pool,Port,Retries}}).
 
 %% Clears and replaces the proxy address list
 setproxyaddr(Pid,HostDef) ->
@@ -105,7 +61,7 @@ init(Args) ->
 	Filters = proplists:get_value(stream_filters,Args#proxy_pass.config,[]),
 	FilterRef = filter_stream:init_filter_list(Filters),
 %% 	filter_stream:process_hooks(info,{proxy_pass_config,Args#proxy_pass.config},FilterRef,Args2),
-    {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,proxy_pass_pid=self(),reverse_proxy_host=[]}}.
+  {ok, proxy_start, Args#proxy_pass{filters=FilterRef,keepalive=0,proxy_pass_pid=self(),reverse_proxy_host=[]}}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -134,8 +90,7 @@ client_send_11(request,State) ->
 				{next_state,client_send_11,State#proxy_pass{request_driver=RDrv}};
 			Err ->
 				?ERROR_MSG("Error starting proxy_read_request: ~p~n",[Err]),
-				EMsg = io_lib:format("Internal proxy error: ~p",[Err]),
-				gen_fsm:send_event(self(),{error,503,lists:flatten(EMsg)}),
+				gen_fsm:send_event(self(),proxylib:proxy_error(503,Err)),
 				{next_state,proxy_error,State}
 		end
  	catch

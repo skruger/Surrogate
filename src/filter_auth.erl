@@ -21,7 +21,7 @@
 start_instance() ->
 	{?MODULE,?MODULE}.
 
-process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_pass{config=PConf}=_PPC) ->
+process_hook(_,request,{request_header,ReqHdr,_RequestSize}=Req,#proxy_txn{config=PConf}=_PPC) ->
 %% 	?ERROR_MSG("ProxyPass: ~p~n",[PConf]),
 	Conf = proplists:get_value(?MODULE,PConf,[]),
 	Dict = dict:from_list(ReqHdr#header_block.headers),

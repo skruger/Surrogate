@@ -349,7 +349,7 @@ handle_info({gen_socket,_,_}=Data, StateName, StateData) ->
 	gen_fsm:send_event(self(),Data),
     {next_state, StateName, StateData};
 handle_info({'DOWN',_,process,_Pid,_},_StateName,State) ->
-%% 	?DEBUG_MSG("Stopping ~p because proxy_pass went away.~n",[?MODULE]),
+%% 	?DEBUG_MSG("Stopping ~p because proxy_server went away.~n",[?MODULE]),
 	{stop,normal,State};
 handle_info(Other,StateName,StateData) ->
 	?INFO_MSG("Got unexpected info in state: ~p~n~p~n",[StateName,Other]),

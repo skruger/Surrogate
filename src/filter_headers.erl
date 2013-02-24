@@ -25,7 +25,7 @@ start_instance() ->
 	
 
 process_hook(_Pid,request,{request_header,ReqHdr,RequestSize},PPC) ->
-	Cfg = PPC#proxy_pass.config,
+	Cfg = PPC#proxy_txn.config,
 	RawProps = proplists:get_value(?MODULE,Cfg,[]),
 	{_Props,AddHdrs,RemHdrs} = parse_props(RawProps,[],[],[]),
 	HBlock0 = ReqHdr#header_block.headers,
@@ -34,7 +34,7 @@ process_hook(_Pid,request,{request_header,ReqHdr,RequestSize},PPC) ->
 			false -> HBlock0;
 			_ ->
 				try
-					{PeerAddr,_} = PPC#proxy_pass.request_peer,
+					{PeerAddr,_} = PPC#proxy_txn.request_peer,
 					HBlock0++[{'X-Forwarded-For',format_inet(PeerAddr)}]
 %% 					proxylib:append_header("X-Forwarded-For: "++format_inet(PeerAddr),HBlock0)
 				catch _:_ -> HBlock0 end
@@ -88,9 +88,9 @@ rewrite_hosts({replace,Match,Replace,RedirectSpec}=RSpec,#rewrite_host{headers=H
 				NewHost ->
 					NewDict = dict:store('Host',NewHost,Dict),
 					{host,_Host,_Port} = TargetHost = proxylib:parse_host(RedirectSpec,80),
-					TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_pass.config),
+					TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_txn.config),
 %% 		 			?ERROR_MSG("~p TargetList: ~p~n",[?MODULE,TargetList]),
-					proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,TargetList),
+					proxy_client:setproxyaddr(PPC#proxy_txn.proxy_client_pid,TargetList),
 					Acc#rewrite_host{headers=dict:to_list(NewDict)}
 			end;
 		HostErr ->

@@ -113,8 +113,8 @@ ip_listener_list([L|R],Acc) ->
 	end.
 
 ip_listener_filter_valid(Listeners) ->
-	IPList0 = [ IP || {network_interfaces,_Host,_Dev,IP,_Alias} <- cluster_network_manager:get_interface_proplist()],
-	IPList = [{ip,{0,0,0,0}},{ip,{0,0,0,0,0,0,0,0}}|IPList0],
+%% 	IPList0 = [ IP || {network_interfaces,_Host,_Dev,IP,_Alias} <- cluster_network_manager:get_interface_proplist()],
+	IPList = [{ip,{0,0,0,0}},{ip,{0,0,0,0,0,0,0,0}}], %% |IPList0
 	lists:filter(fun({IP,_}) ->
 						 lists:member(IP,IPList)
 				 end,Listeners).

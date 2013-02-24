@@ -56,7 +56,7 @@ init_filter_list([F|R],Acc) ->
 %% response -> Data = {response_header,#header_block,ResponseSize} | {response_data,binary()} | {end_response_data,ByteLength} | delay
 %% ResponseSize = int() | chunked
 %% ByteLength = int()
-%% if delay is returned proxy_pass must receive the data as {filer_delay,Data}
+%% if delay is returned proxy_client must receive the data as {filer_delay,Data}
 
 process_hooks(Hook,Data,Filters,ProxyPassRecord) ->
 %% 	?DEBUG_MSG("Process hooks: ~p~n",[Filters]),

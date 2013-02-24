@@ -26,27 +26,42 @@
 %% External functions
 %% ====================================================================
 
+
 http_connect(ProxyPass) ->
-	Req = (ProxyPass#proxy_pass.request)#header_block.request,
+  Mode = proplists:get_value(http_connect,ProxyPass#proxy_txn.config, terminate),
+  Req = (ProxyPass#proxy_txn.request)#header_block.request,
+  Host = Req#request_rec.host,
+  Port = Req#request_rec.port,
+  http_connect(ProxyPass, Host, Port, Mode).
+
+
+%% http_connect(ProxyPass, Host, Port, spoof) ->
+
+
+http_connect(ProxyPass, Host, Port, terminate) ->
+	Req = (ProxyPass#proxy_txn.request)#header_block.request,
 	Host = Req#request_rec.host,
 	Port = Req#request_rec.port,
-	
+	?ERROR_MSG("HTTP CONNECT ~s:~p~n", [Host, Port]),
 	case gen_tcp:connect(Host,Port,[binary,inet,{active,false}]) of
 		{ok,SvrSock0} ->
 %% 			?DEBUG_MSG("http_connect() ~p connected:~p~n",[self(),SvrSock0]),
 			{ok,SvrSock} = gen_socket:create(SvrSock0,gen_tcp),
 			ServerPid = spawn(?MODULE,server_loop,[SvrSock,undefined]),
-			ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_pass.client_sock,undefined]),
-			gen_socket:send(ProxyPass#proxy_pass.client_sock,<<"HTTP/1.1 200 Connection Established\r\nConnection: keep-alive\r\n\r\n">>),
+			ClientPid = spawn(?MODULE,client_loop,[ProxyPass#proxy_txn.client_sock,undefined]),
+			gen_socket:send(ProxyPass#proxy_txn.client_sock,<<"HTTP/1.1 200 Connection Established\r\nConnection: keep-alive\r\n\r\n">>),
 			gen_socket:controlling_process(SvrSock,ServerPid),
-			gen_socket:controlling_process(ProxyPass#proxy_pass.client_sock,ClientPid),
+			gen_socket:controlling_process(ProxyPass#proxy_txn.client_sock,ClientPid),
 			ServerPid ! {client,ClientPid},
 			ClientPid ! {server,ServerPid},
 			ok;
 		{error,ErrStat} = Err ->
 			gen_fsm:send_event(self(),{error,503,lists:flatten(io_lib:format("Error connecting to server: ~p",[ErrStat]))}),
 			Err
-	end.
+	end;
+http_connect(ProxyPass, Mode) ->
+  ?ERROR_MSG("Invalid http_connect mode: ~p~n", [Mode]),
+  http_connect(ProxyPass, terminate).
 
 bridge_client_server(ClientSock,ServerSock) ->
 	ServerPid = spawn(?MODULE,server_loop,[ServerSock,undefined]),

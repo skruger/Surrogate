@@ -12,6 +12,11 @@
 					response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,
 					keepalive,request_peer,proxy_pass_pid}).
 
+-record(proxy_txn,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,
+  response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,
+  keepalive,request_peer,proxy_client_pid, proxy_server_pid, client_hop_headers, end2end_req_headers}).
+
+
 -record(http_admin,{method,path,version,args,headers,auth,has_auth,body}).
 -record(http_admin_module,{path,module,function}).
 -record(surrogate_docroot,{path,mimetype,filedata}).
@@ -47,3 +52,5 @@
 -define(DEBUG_MSG(X,Y), error_logger:info_msg("DEBUG:\n"++X,Y)).
 
 -define(ACCESS_LOG(C,P,U,X), surrogate_log:access(C,P,U,X)).
+
+-define(HOP_HEADERS, ['Connection','Keep-Alive', 'Proxy-Authentication', 'Proxy-Authorization', "TE", "Trailers", 'Transfer-Encoding', 'Upgrade']).

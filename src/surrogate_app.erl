@@ -65,7 +65,7 @@ run() ->
 	application:start(crypto),
 	application:start(public_key),
 	application:start(ssl),
-	application:start(cluster_supervisor),
+	%application:start(cluster_supervisor),
 	application:load(surrogate),
 	case application:start(surrogate) of
 		ok ->

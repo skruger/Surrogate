@@ -25,7 +25,7 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_Pid,request,{request_header,ReqHdr,RequestSize},PPC) ->
-	Cfg = PPC#proxy_pass.config,
+	Cfg = PPC#proxy_txn.config,
 	HBlock0 = ReqHdr#header_block.headers,
 	RewriteHosts = proplists:get_all_values(?MODULE,Cfg),
 %% 	?ERROR_MSG("Got rewrite hosts: ~p~n~p~n",[RewriteHosts,RawProps]),
@@ -89,7 +89,7 @@ process_hook(_Pid,response,{response_data,Data},PPC) ->
 				ExistingData ->
 					put({?MODULE,response_data},[ExistingData,Data])
 			end,
-			PPC#proxy_pass.proxy_pass_pid ! get_response_data,
+			PPC#proxy_txn.proxy_client_pid ! get_response_data,
 			delay
 	end;
 process_hook(_Pid,response,{end_response_data,_} = EndMsg,PPC) ->
@@ -108,8 +108,8 @@ process_hook(_Pid,response,{end_response_data,_} = EndMsg,PPC) ->
 %% 							   [NewHost,OldHost]),
 					iolist_to_binary(re:replace(OrigResponse,NewHost,OldHost,[global]))
 			end,
-			PPC#proxy_pass.proxy_pass_pid ! {filter_delay,{response_data,NewResponse}},
-			PPC#proxy_pass.proxy_pass_pid ! {filter_delay,EndMsg},
+			PPC#proxy_txn.proxy_client_pid ! {filter_delay,{response_data,NewResponse}},
+			PPC#proxy_txn.proxy_client_pid ! {filter_delay,EndMsg},
 			erase({?MODULE,rewrite}),
 			erase({?MODULE,response_data}),
 			delay
@@ -153,9 +153,9 @@ rewrite_hosts({replace,Match,Replace,RedirectSpec}=_RSpec,
 		{ok,Headers} ->
 			{host,_Host,_Port} = TargetHost = proxylib:parse_host(RedirectSpec,80),
 			TargetList = proxy_protocol:resolve_target_list(TargetHost,
-															PPC#proxy_pass.config),
+															PPC#proxy_txn.config),
 %% 		 	?ERROR_MSG("~p TargetList: ~p~n",[?MODULE,TargetList]),
-			proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,TargetList),
+			proxy_client:setproxyaddr(PPC#proxy_txn.proxy_client_pid,TargetList),
 			Acc#rewrite_host{headers=Headers};
 		false ->
 			Acc

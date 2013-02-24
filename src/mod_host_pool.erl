@@ -41,7 +41,7 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
-	Opts = proplists:get_value(mod_host_pool,PPC#proxy_pass.config,[]),
+	Opts = proplists:get_value(mod_host_pool,PPC#proxy_txn.config,[]),
 	RouteHeader = proplists:get_value(route_header,Opts,'Host'),
 	HDict = dict:from_list(Hdr#header_block.headers),
 	%% Take default port from host: header even if another route_header is specified.
@@ -58,9 +58,9 @@ process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
 			{host,Host,Port} = proxylib:parse_host(HostStr,DefaultPort),
 			case get_pool_by_host(Host) of
 				{ok,Pool} ->
-					proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,[{pool,Pool,Port,3}]);
+					proxy_client:setproxyaddr(PPC#proxy_txn.proxy_client_pid,[{pool,Pool,Port,3}]);
 				{ok,Pool,PortOverride} ->
-					proxy_pass:setproxyaddr(PPC#proxy_pass.proxy_pass_pid,[{pool,Pool,PortOverride,3}]);
+					proxy_client:setproxyaddr(PPC#proxy_txn.proxy_client_pid,[{pool,Pool,PortOverride,3}]);
 				_ ->
 					ok
 			end;

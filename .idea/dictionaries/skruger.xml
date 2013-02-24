@@ -2,7 +2,9 @@
   <dictionary name="skruger">
     <words>
       <w>addproxyaddr</w>
+      <w>proto</w>
       <w>setproxyaddr</w>
+      <w>websocket</w>
     </words>
   </dictionary>
 </component>

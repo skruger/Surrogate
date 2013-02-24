@@ -14,13 +14,20 @@
 
 %% -export([send/2,setopts/2]).
 
+-export([proxy_error/2]).
+
 -export([get_pool_process/1,remove_headers/2,remove_header/2,append_header/2,append_headers/2,replace_header/3,timestamp/0]).
 -export([inet_parse/1,format_inet/1,inet_version/1,inet_getaddr/1,inet_getaddr/2,uri_unescape/1,string_to_term/1]).
+
+-export([split_hop_headers/1]).
 
 %% -export([re/1]).
 %%
 %% API Functions
 %%
+
+proxy_error(Code ,Err) ->
+  {error, Code, lists:flatten(io_lib:format("Internal proxy error: ~p",[Err]))}.
 
 header2dict(Hdr) ->
 	?ERROR_MSG("header2dict() is deprecated!~n~p~n",[erlang:get_stacktrace()]),
@@ -35,6 +42,10 @@ header2dict([Hdr|R],Acc)->
 			Val = string:strip(string:sub_string(Hdr,Idx+1),left,$ ),
 			header2dict(R,[{string:to_lower(Key),Val}|Acc])
 	end.
+
+split_hop_headers(HdrList) ->
+  lists:partition(fun({Hdr,_}) -> lists:member(Hdr, ?HOP_HEADERS) end, HdrList).
+
 
 
 
