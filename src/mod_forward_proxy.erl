@@ -53,13 +53,18 @@ start_instance() ->
 	{?MODULE,?MODULE}.
 
 process_hook(_Pid,request,{request_header,Hdr,_Size}=HBlock,PPC) ->
+  SSLMode = proplists:get_value(ssl_backend, PPC#proxy_txn.config, false),
 	%% This should try the Request-URI when absoluteURI is given in HTTP proxy mode (RFC 2616 5.1.2)
 	case proplists:get_value('Host',Hdr#header_block.headers,none) of
-		HostStr when is_list(HostStr) ->
-			{host,_Host,_Port} = TargetHost = proxylib:parse_host(HostStr,80),
+		HostStr when is_list(HostStr) and SSLMode ->
+			{host,SSLHost,SSLPort} = proxylib:parse_host(HostStr,443),
+      TargetHost = {host_ssl, SSLHost, SSLPort, []},
 			TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_txn.config),
-%% 			?ERROR_MSG("TargetList: ~p~n",[TargetList]),
 			proxy_client:setproxyaddr(PPC#proxy_txn.proxy_client_pid,TargetList);
+    HostStr when is_list(HostStr) ->
+      {host,_Host,_Port} = TargetHost = proxylib:parse_host(HostStr,80),
+      TargetList = proxy_protocol:resolve_target_list(TargetHost,PPC#proxy_txn.config),
+      proxy_client:setproxyaddr(PPC#proxy_txn.proxy_client_pid,TargetList);
 		Err ->
       ?ERROR_MSG("Couldn't get host header for ~p~n",[?MODULE]),
       ok

@@ -8,10 +8,6 @@
 -record(cluster_listener,{name,ip,port,type,options,supervisor,sup_process_name}).
 -record(cluster_balancer,{name,enabled,balance_module,hosts,checks,config}).
 
--record(proxy_pass,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,
-					response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,
-					keepalive,request_peer,proxy_pass_pid}).
-
 -record(proxy_txn,{server_sock,client_sock,request,reverse_proxy_host,request_driver,request_received,request_sent,
   response,response_driver,response_bytes_left,proxy_type,userinfo,sock_closed,config,filters,
   keepalive,request_peer,proxy_client_pid, proxy_server_pid, client_hop_headers, end2end_req_headers}).

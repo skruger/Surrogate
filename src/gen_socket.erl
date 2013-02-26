@@ -16,7 +16,7 @@
 %% External exports
 -export([create/2,destroy/1,send/2,recv/2,recv/3,setopts/2,getopts/2,close/1,controlling_process/2,peername/1,info/1]).
 
--export([set_listener/2,set_direction/2]).
+-export([set_listener/2,set_direction/2,upgrade_ssl/2]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -87,6 +87,9 @@ peername({?MODULE,Sock}) ->
 info({?MODULE,Sock}) ->
 	gen_server:call(Sock,info).
 
+upgrade_ssl({?MODULE, Sock}, Opts) ->
+  gen_server:call(Sock, {upgrade_ssl, Opts}).
+
 %% ====================================================================
 %% Server functions
 %% ====================================================================
@@ -113,6 +116,16 @@ init([Socket,Type,Pid]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_call({upgrade_ssl, Opts}, _From, State) when State#state.type == gen_tcp ->
+  case ssl:ssl_accept(State#state.socket, Opts,10000) of
+    {ok, SSLSocket} ->
+      {reply, ok, State#state{type=ssl, socket=SSLSocket}};
+    {error, Err} ->
+      ?ERROR_MSG("Error upgrading socket to SSL: ~p~n", [Err]),
+      {reply, {error, Err}, State}
+  end;
+handle_call({upgrade_ssl, Opts}, _From, State) when State#state.type == ssl ->
+  {reply, {error, already_ssl}, State};
 handle_call({destroy,Pid},From,State) when State#state.type == gen_tcp ->
 	erlang:demonitor(State#state.controlling_process_mon),
 	ok = gen_tcp:controlling_process(State#state.socket,Pid),

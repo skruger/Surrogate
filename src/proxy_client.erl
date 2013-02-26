@@ -198,8 +198,11 @@ client_response({end_response_data,_Size}, _From, State) when State#proxy_txn.re
 %% 	?DEBUG_MSG("Connection closed: ~p (~p bytes)~n",[self(),Size]),
 %% 	gen_socket:close(State#proxy_txn.server_sock),
 	{stop,normal,stop,State};
+client_response({response_data,<<>>}, _From, State) when State#proxy_txn.response_bytes_left == chunked ->
+  ?ERROR_MSG("Supressing empty chunk.~n",[]),
+  {reply, get_next, client_response, State};
 client_response({response_data,Data}, _From, State) when State#proxy_txn.response_bytes_left == chunked ->
-%% 	?ERROR_MSG("Got chunked {response_data,_}, send out as a chunk.~p~n",[self()]),
+%% 	?ERROR_MSG("Got chunked {response_data,~p}, send out as a chunk.~p~n",[Data, self()]),
 	DataLen = list_to_binary(erlang:integer_to_list(trunc(bit_size(Data)/8),16)),
 	DataOut = <<DataLen/binary,"\r\n",Data/binary,"\r\n">>,
 	gen_socket:send(State#proxy_txn.client_sock,DataOut),
