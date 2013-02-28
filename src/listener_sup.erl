@@ -57,15 +57,17 @@ start_link() ->
 
 init([]) ->
 	ListenSpec = proxyconf:get(listeners,[]),
-	ListenPropList0 = ip_listener_list(ListenSpec,[]),
-	?DEBUG_MSG("Got listeners: ~n~p~n",[ListenPropList0]),
-	ListenPropList = ip_listener_filter_valid(ListenPropList0),
-	?DEBUG_MSG("Using listeners: ~n~p~n",[ListenPropList]),
+	ListenPropList = ip_listener_list(ListenSpec,[]),
+%% 	?DEBUG_MSG("Got listeners: ~n~p~n",[ListenPropList0]),
+%%   ListenPropList = local_listeners(ListenPropList0),
+%% 	ListenPropList = ip_listener_filter_valid(ListenPropList0),
+%% 	?DEBUG_MSG("Using listeners: ~n~p~n",[ListenPropList]),
 	LCSpecs = lists:map(fun(X) -> ip_listener_childspec(X,ListenPropList) end,proplists:get_keys(ListenPropList)),
-	?DEBUG_MSG("Listener childspecs: ~n~p~n",[LCSpecs]),
-	Children = lists:flatten([listen_childspec(proplists:get_all_values({ip,{0,0,0,0,0,0,0,0}},ListenPropList),[])++
-								  listen_childspec(proplists:get_all_values({ip,{0,0,0,0}},ListenPropList),[])++
-								  LCSpecs]),
+%% 	?DEBUG_MSG("Listener childspecs: ~n~p~n",[LCSpecs]),
+  CSpecs = listen_childspec(ListenPropList,[]),
+  ?DEBUG_MSG("LCSpecs:~n~p~n", [LCSpecs]),
+	Children = lists:flatten(CSpecs++LCSpecs),
+  ?DEBUG_MSG("Children: ~n~p~n", [Children]),
 	{ok,{{one_for_one,15,5},
 		 Children
 		}};
@@ -86,8 +88,23 @@ init(Args) ->
 %% 		 CSpecs
 %% 		 }}.
 
-ip_listener_childspec({ip,{0,0,0,0}},_) -> [];
-ip_listener_childspec({ip,{0,0,0,0,0,0,0,0}},_) -> [];
+local_listeners(PropList) ->
+  local_listeners(PropList, []).
+
+local_listeners([], Acc) ->
+  Acc;
+local_listeners([{{ip, {0,0,0,0}},_}=Local|R], Acc) ->
+  local_listeners(R, [Local|Acc]);
+local_listeners([{{ip, {0,0,0,0,0,0,0,0}},_}=Local|R], Acc) ->
+  local_listeners(R, [Local|Acc]);
+local_listeners([{{ip, {127,_,_,_}},_}=Local|R], Acc) ->
+  local_listeners(R, [Local|Acc]);
+local_listeners([_|R],Acc) ->
+  local_listeners(R, Acc).
+
+
+%% ip_listener_childspec({ip,{0,0,0,0}},_) -> [];
+%% ip_listener_childspec({ip,{0,0,0,0,0,0,0,0}},_) -> [];
 ip_listener_childspec({ip,_}=Key,ListenPropList) ->
 	ListenSpecs = proplists:get_all_values(Key,ListenPropList),
 	SupName = ip_sup_name(Key),
