@@ -33,8 +33,11 @@ start_link() ->
 
 start_link(Config) ->
 	try
-		case file:consult(Config) of
-			{ok,Terms} ->
+%% 		case file:consult(Config) of
+
+    case application:get_all_key(surrogate) of
+			{ok, PropList} ->
+        Terms = proplists:get_value(env, PropList, []),
 				gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
 			Err ->
 				?CRITICAL("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
