@@ -1,0 +1,11 @@
+
+case application:load(exmpp) of
+    {error, _} -> CONFIG;
+    _ ->
+        {erl_opts, OptList} = lists:keyfind(erl_opts, 1, CONFIG),
+        {src_dirs, DirList} = lists:keyfind(src_dirs, 1, OptList),
+        NewSrcDirs = ["xmpp"| DirList],
+        NewOpts = lists:keyreplace(src_dirs, 1, OptList, {src_dirs, NewSrcDirs}),
+        NewConfig = lists:keyreplace(erl_opts, 1, CONFIG, {erl_opts, NewOpts}),
+        NewConfig
+end.
