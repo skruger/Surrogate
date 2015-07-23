@@ -1,3 +1,5 @@
+.idea/
+deps/exmpp
 *.log
 /jadmin/JSurrogateWS/build/
 /jadmin/JSurrogateClient/dist/
