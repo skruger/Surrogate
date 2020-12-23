@@ -6,7 +6,7 @@
 %%% -------------------------------------------------------------------
 -module(proxy_listener).
 
--behaviour(gen_fsm).
+-behaviour(gen_statem).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
@@ -18,9 +18,9 @@
 -export([listen_master/2,accept_plain/2,accept_ssl/2,start_link/1]).
 
 %% ,http_balance/2
-%% gen_fsm callbacks
+%% gen_statem callbacks
 -export([init/1,  handle_event/3,
-	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4, callback_mode/0]).
 
 %% -record(state, {}).
 
@@ -32,7 +32,7 @@
 %% ====================================================================
 
 start_link(Args) ->
-	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
+	gen_statem:start_link(?MODULE,Args,[{debug,[log]}]).
 
 
 %% ====================================================================
@@ -49,7 +49,7 @@ init({listen_plain,{ip,IP0},Port,Props0}=L) ->
 	erlang:send_after(20000,self(),child_check_timer),
 	?INFO_MSG("~p PLAIN listening: ~p~n",[?MODULE,L]),
 	ProtocolType = proplists:get_value(protocol,Props0,undefined_listener_protocol),
-	ListenName = lists:flatten(io_lib:format("plain_~s_~p_~p",[proxylib:format_inet(proxylib:inet_parse(IP0)),Port,ProtocolType])), 
+	ListenName = lists:flatten(io_lib:format("plain_~s_~p_~p",[proxylib:format_inet(proxylib:inet_parse(IP0)),Port,ProtocolType])),
  	erlang:register(list_to_atom(ListenName),self()),
 	Listeners = proplists:get_value(num_listeners,Props0,1),
 	Props = [{surrogate_listener_name,list_to_atom(ListenName)}|Props0],
@@ -64,14 +64,14 @@ init({listen_plain,{ip,IP0},Port,Props0}=L) ->
 	?INFO_MSG("~p PLAIN listening: ~p~ngen_tcp:listen(~p,~p)~n",[?MODULE,L,Port,Opts]),
 	case gen_tcp:listen(Port,Opts) of
 		{ok,Listen} ->
-			gen_fsm:send_event(self(),check_listeners),
+			gen_statem:cast(self(),check_listeners),
 			{ok, listen_master, #socket_state{type=plain,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
 			error_logger:error_msg("Error on listen() ~p~nSleeping before retry.~n",[Err]),
 			timer:sleep(5000),
 			case gen_tcp:listen(Port,Opts++[{reuseaddr,true}]) of
 				{ok,Listen} ->
-					gen_fsm:send_event(self(),check_listeners),
+					gen_statem:cast(self(),check_listeners),
 					{ok, listen_master, #socket_state{type=plain,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 				Err2 ->
 					?ERROR_MSG("~p could not start with args ~p~nError: ~p~n",[?MODULE,L,Err2]),
@@ -84,7 +84,7 @@ init({plain,Listen,Port,Props,Parent}=_L) ->
 init({listen_ssl,{ip,IP0},Port,Props0}=L)->
 	erlang:send_after(20000,self(),child_check_timer),
 	ProtocolType = proplists:get_value(protocol,Props0,undefined_listener_protocol),
-	ListenName = lists:flatten(io_lib:format("ssl_~s_~p_~p",[proxylib:format_inet(proxylib:inet_parse(IP0)),Port,ProtocolType])), 
+	ListenName = lists:flatten(io_lib:format("ssl_~s_~p_~p",[proxylib:format_inet(proxylib:inet_parse(IP0)),Port,ProtocolType])),
  	erlang:register(list_to_atom(ListenName),self()),
 	Listeners = proplists:get_value(num_listeners,Props0,1),
 	Props = [{surrogate_listener_name,list_to_atom(ListenName)}|Props0],
@@ -93,14 +93,14 @@ init({listen_ssl,{ip,IP0},Port,Props0}=L)->
  	KeyFile = proplists:get_value(keyfile,Props),
  	CertFile = proplists:get_value(certfile,Props),
 	Bind = {ip,proxylib:inet_parse(IP0)},
-	Opts = 
+	Opts =
 		case proxylib:inet_version(Bind) of
 			inet -> [{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{depth,2}];
 			inet6 -> [inet6,{certfile,CertFile},{keyfile,KeyFile},Bind,binary,{active,false},{ssl_imp,new},{depth,2}] %% {ssl_imp, new} set for R13B04
 		end,
 	case catch ssl:listen(Port,Opts) of
 		{ok,Listen} ->
-			gen_fsm:send_event(self(),check_listeners),
+			gen_statem:cast(self(),check_listeners),
 			{ok,listen_master,#socket_state{type=ssl,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 		Err ->
  			error_logger:error_msg("Error on ssl listen() ~p~nSleeping before retry.~n",[Err]),
@@ -108,7 +108,7 @@ init({listen_ssl,{ip,IP0},Port,Props0}=L)->
 			Opts2 = Opts++[{reuseaddr,true}],
 			case catch gen_tcp:listen(Port,Opts2) of
 				{ok,Listen} ->
-					gen_fsm:send_event(self(),check_listeners),
+					gen_statem:cast(self(),check_listeners),
 					{ok,listen_master,#socket_state{type=ssl,listener=Listen,num_listeners=Listeners,listeners=[],listen_port=Port,proplist=Props}};
 				Err2 ->
 					?ERROR_MSG("~p could not start ssl listener with args ~p~nOptions: ~p~nError: ~p~n",[?MODULE,L,Opts2,Err2]),
@@ -129,19 +129,19 @@ listen_master(check_listeners,State)->
 	Listeners = lists:filter(fun(P) -> is_pid(P) and is_process_alive(P) end,State#socket_state.listeners),
 	case length(Listeners) of
 		Num when Num < State#socket_state.num_listeners ->
-			gen_fsm:send_event(self(),startchild);
+			gen_statem:cast(self(),startchild);
 		_ ->
 			true
 	end,
 	{next_state,listen_master,State#socket_state{listeners=Listeners}};
 listen_master(startchild,State) ->
 %% 	io:format("~p starting child...~n",[?MODULE]),
-	gen_fsm:send_event(self(),check_listeners),
-	case gen_fsm:start_link(?MODULE,{State#socket_state.type,State#socket_state.listener,State#socket_state.listen_port,State#socket_state.proplist,self()},[]) of
+	gen_statem:cast(self(),check_listeners),
+	case gen_statem:start_link(?MODULE,{State#socket_state.type,State#socket_state.listener,State#socket_state.listen_port,State#socket_state.proplist,self()},[]) of
 		{ok,Pid} ->
 			erlang:monitor(process,Pid),
 %% 			erlang:register(list_to_atom(lists:append(atom_to_list(State#socket_state.type),pid_to_list(Pid))),Pid),
-			gen_fsm:send_event(Pid,{wait,State#socket_state.listener}),
+			gen_statem:cast(Pid,{wait,State#socket_state.listener}),
 %% 			?FQDEBUG("Started child ~p~n",[Pid]),
 			{next_state,listen_master,State#socket_state{listeners = [Pid|State#socket_state.listeners]}};
 		Err ->
@@ -149,10 +149,10 @@ listen_master(startchild,State) ->
 			{next_state,listen_master,State}
 	end;
 listen_master({child_accepted,Pid},State) ->
-	gen_fsm:send_event(self(),check_listeners),
+	gen_statem:cast(self(),check_listeners),
 	{next_state,listen_master,State#socket_state{listeners = lists:delete(Pid,State#socket_state.listeners)}};
 listen_master(child_check_timer,State) ->
-	gen_fsm:send_event(self(),check_listeners),
+	gen_statem:cast(self(),check_listeners),
 	erlang:send_after(2000,self(),child_check_timer),
 	{next_state,listen_master,State}.
 
@@ -165,13 +165,13 @@ accept_plain({wait,_ListenSock},State) ->
 			{ok,Sock} = gen_socket:create(Sock0,gen_tcp),
 			gen_socket:set_listener(Sock,ListenerName),
 			gen_socket:set_direction(Sock,front),
-			gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
-			gen_fsm:send_event(self(),get_headers),
+			gen_statem:cast(State#proxy_listener.parent_pid,{child_accepted,self()}),
+			gen_statem:cast(self(),get_headers),
 			proxy_protocol:handle_protocol(State#proxy_listener{client_sock=Sock}),
 			{stop,normal,State};
 		{error,timeout} ->
 			?INFO_MSG("~p: Accept timeout, retrying.~n",[?MODULE]),
-			gen_fsm:send_event(self(),wait),
+			gen_statem:cast(self(),wait),
 			{next_state,accept,State};
 		Err ->
 			?ERROR_MSG("~p: Accept error: ~p~n",[?MODULE,Err]),
@@ -192,26 +192,26 @@ accept_ssl({wait,ListenSock},State) ->
 					{ok,Sock} = gen_socket:create(SSLSock,ssl),
 					gen_socket:set_listener(Sock,ListenerName),
 					gen_socket:set_direction(Sock,front),
-					gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
-					gen_fsm:send_event(self(),get_headers),
+					gen_statem:cast(State#proxy_listener.parent_pid,{child_accepted,self()}),
+					gen_statem:cast(self(),get_headers),
 					proxy_protocol:handle_protocol(State#proxy_listener{client_sock=Sock}),
 					{stop,normal,State};
 				{'EXIT',Err} ->
 					?ERROR_MSG("Error in ssl_accept:~n~p~n",[Err]),
-					gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
+					gen_statem:cast(State#proxy_listener.parent_pid,{child_accepted,self()}),
 					{stop,normal,State};
 				SSLErr ->
 					?ERROR_MSG("SSL Error: ~p~n",[SSLErr]),
-					gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
+					gen_statem:cast(State#proxy_listener.parent_pid,{child_accepted,self()}),
 					{stop,normal,State}
 			end;
 		{error,timeout} ->
 			?INFO_MSG("~p: Accept timeout, retrying.~n",[?MODULE]),
-			gen_fsm:send_event(self(),wait),
+			gen_statem:cast(self(),wait),
 			{next_state,accept,State};
 		Err ->
 			?ERROR_MSG("~p: Accept error: ~p~n",[?MODULE,Err]),
-			gen_fsm:send_event(State#proxy_listener.parent_pid,{child_accepted,self()}),
+			gen_statem:cast(State#proxy_listener.parent_pid,{child_accepted,self()}),
 			{stop,normal,State}
 	end.
 
@@ -276,3 +276,5 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
+callback_mode() ->
+    state_functions.

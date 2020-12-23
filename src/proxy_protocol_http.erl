@@ -28,5 +28,5 @@ handle_protocol(State) ->
 	Target = proxy_protocol:get_proxy_target(State),
 	TargetList = proxy_protocol:resolve_target_list(Target, State#proxy_listener.proplist),
 	proxy_client:setproxyaddr(Pid,TargetList),
-	gen_fsm:send_event(Pid,{socket,Sock}).
+	proxy_client:start_socket_processing(Pid,{socket,Sock}).
 

@@ -6,7 +6,7 @@
 %%% -------------------------------------------------------------------
 -module(proxy_client).
 
--behaviour(gen_fsm).
+-behaviour(gen_statem).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
@@ -15,11 +15,11 @@
 
 %% --------------------------------------------------------------------
 %% External exports
--export([start/1,setproxyaddr/2,addproxyaddr/2]).
+-export([start/1,setproxyaddr/2,addproxyaddr/2,start_socket_processing/2]).
 
-%% gen_fsm callbacks
+%% gen_statem callbacks
 -export([init/1, handle_event/3,
-	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4, callback_mode/0]).
 
 -export([proxy_start/2,client_request/2,http_connect/2,websocket_bridge/2,client_response/3,proxy_error/2,proxy_finish/2]).
 
@@ -33,15 +33,19 @@
 
 
 start(Args) ->
-	gen_fsm:start_link(?MODULE,Args,[{debug,[log]}]).
+	gen_statem:start_link(?MODULE,Args,[{debug,[log]}]).
 
 %% Clears and replaces the proxy address list
 setproxyaddr(Pid,HostDef) ->
-	gen_fsm:send_all_state_event(Pid,{setproxyaddr,HostDef}).
+	gen_statem:cast(Pid,{setproxyaddr,HostDef}).
 
 %% Appends to the proxy address list
 addproxyaddr(Pid,HostDef) ->
-	gen_fsm:send_all_state_event(Pid,{addproxyaddr,HostDef}).
+	gen_statem:cast(Pid,{addproxyaddr,HostDef}).
+
+
+start_socket_processing(Pid,{socket, Sock}) ->
+	gen_statem:cast(Pid,{socket,Sock}).
 
 %% ====================================================================
 %% Server functions
@@ -69,7 +73,7 @@ init(Args) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 proxy_start({socket,CSock},State) ->
-	gen_fsm:send_event(self(),request),
+	gen_statem:cast(self(),request),
 %% 	?DEBUG_MSG("peername: ~p~n",[gen_socket:peername(CSock)]),
 	case gen_socket:peername(CSock) of
 		{ok,Peer} ->
@@ -89,7 +93,7 @@ client_request(request,State) ->
 				{next_state,client_request,State#proxy_txn{request_driver=RDrv}};
 			Err ->
 				?ERROR_MSG("Error starting proxy_read_request: ~p~n",[Err]),
-				gen_fsm:send_event(self(),proxylib:proxy_error(503,Err)),
+				gen_statem:cast(self(),proxylib:proxy_error(503,Err)),
 				{next_state,proxy_error,State}
 		end
  	catch
@@ -102,7 +106,7 @@ client_request(request,State) ->
 
 client_request({request_header,#header_block{expect='100-continue'}=_ReqHdr,_RequestSize}=_R,State) ->
 	?ERROR_MSG("Error: Expect: 100-continue is unsupported~n",[]),
-	gen_fsm:send_event(self(),{error,417,"Expectation Failed",""}),
+	gen_statem:cast(self(),{error,417,"Expectation Failed",""}),
 	{next_state,proxy_error,State};
 
 client_request({request_header,ReqHdr,_RequestSize}=_R,State0) ->
@@ -118,17 +122,17 @@ client_request({request_header,ReqHdr,_RequestSize}=_R,State0) ->
     Err ->
       ?INFO_MSG("Could not start proxy_server instance: ~p~n",[Err]),
       ErrMsg = io_lib:format("~p", [Err]),
-      gen_fsm:send_event(self(),proxylib:proxy_error(503,lists:flatten(ErrMsg))),
+      gen_statem:cast(self(),proxylib:proxy_error(503,lists:flatten(ErrMsg))),
       {next_state, proxy_error, State}
   end;
 
 client_request({request_data,Data},State) ->
-  gen_fsm:sync_send_event(State#proxy_txn.proxy_server_pid, {request_data,Data}),
+  gen_statem:call(State#proxy_txn.proxy_server_pid, {request_data,Data}),
 	proxy_read_request:get_next(State#proxy_txn.request_driver),
 	{next_state,client_request,State};
 
 client_request({end_request_data,_Size},State) ->
-  gen_fsm:sync_send_event(State#proxy_txn.proxy_server_pid, {end_request_data,_Size}),
+  gen_statem:call(State#proxy_txn.proxy_server_pid, {end_request_data,_Size}),
   {next_state,client_response,State};
 
 client_request({request_filter_response,Data},State) ->
@@ -182,7 +186,7 @@ client_response({response_header,ResHdr,ResponseSize}, _From, State) ->
 %% 			?ERROR_MSG("Upgrade to websocket~n",[]),
 			{reply, websocket_bridge, websocket_bridge, State};
 		{0,_} ->
-			gen_fsm:send_event(self(),next),
+			gen_statem:cast(self(),next),
 			{reply, stop, proxy_finish,State};
 		_ ->
 %% 			proxy_read_response:get_next(State#proxy_txn.response_driver),
@@ -211,7 +215,7 @@ client_response({response_data,Data}, _From, State) when State#proxy_txn.respons
 client_response({end_response_data,_Size}, _From, State) when State#proxy_txn.response_bytes_left == chunked ->
 %% 	?DEBUG_MSG("Chunk end: ~p~n",[self()]),
 	gen_socket:send(State#proxy_txn.client_sock,<<"0\r\n\r\n">>),
-	gen_fsm:send_event(self(),next),
+	gen_statem:cast(self(),next),
 	{reply, stop, proxy_finish,State};
 client_response({response_data,Data}, _From, State) ->
 %% 	?ERROR_MSG("Got {response_data,_}. ~p~n",[self()]),
@@ -223,7 +227,7 @@ client_response({end_response_data,_Size}, _From, State) ->
 %% 	gen_socket:close(State#proxy_txn.server_sock),
 %% 	gen_socket:close(State#proxy_txn.client_sock),
 %% 	{stop,normal,State}.
-	gen_fsm:send_event(self(),next),
+	gen_statem:cast(self(),next),
 	{reply, stop,proxy_finish,State}.
 	
 
@@ -242,7 +246,7 @@ proxy_finish(next,State) ->
 %% 					gen_socket:close(State#proxy_txn.client_sock),
 %% 					{stop,normal,State};
 				"keep-alive" ->
-					gen_fsm:send_event(self(),request),
+					gen_statem:cast(self(),request),
 %% 					gen_socket:close(State#proxy_txn.server_sock),
 					{next_state,client_request,State#proxy_txn{server_sock=undefined,keepalive=State#proxy_txn.keepalive+1}};
 				"close" ->
@@ -268,7 +272,7 @@ proxy_error({error,Code},State) ->
 	?DEBUG_MSG("Proxy error: ~p~n",[Code]),
 	case Code of
 		_ ->
-			gen_fsm:send_event(self(),{error,Code,"General Proxy Failure"}),
+			gen_statem:cast(self(),{error,Code,"General Proxy Failure"}),
 			{next_state,proxy_error,State}
 	end;
 proxy_error({error,Code,Desc},State) ->
@@ -342,14 +346,14 @@ handle_info({request_header,_,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Processing filters: ~p~n",[StateData#proxy_txn.filters]),
 	case filter_stream:process_hooks(request,Dat,StateData#proxy_txn.filters,StateData) of
 		delay -> ok;
-		I -> gen_fsm:send_event(self(),I)
+		I -> gen_statem:cast(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({request_data,_}=Dat,StateName,StateData) ->
 %% 	?ERROR_MSG("Sending event: {request_data,_} in state ~p~n",[StateName]),
 	case filter_stream:process_hooks(request,Dat,StateData#proxy_txn.filters,StateData) of
 		delay -> ok;
-		I -> gen_fsm:send_event(self(),I)
+		I -> gen_statem:cast(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({end_request_data,_}=Dat,StateName,StateData) ->
@@ -357,7 +361,7 @@ handle_info({end_request_data,_}=Dat,StateName,StateData) ->
 		delay -> ok;
 		I ->
 %%       ?DEBUG_MSG("Sending event: ~p~n",[I]),
-      gen_fsm:send_event(self(),I)
+      gen_statem:cast(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({response_header,_,_}=Dat,StateName,StateData) ->
@@ -365,7 +369,7 @@ handle_info({response_header,_,_}=Dat,StateName,StateData) ->
 		delay -> ok;
 		I ->
 %% 			?DEBUG_MSG("Got response header in state ~p~n~p~n",[StateName,I]),
-			gen_fsm:send_event(self(),I)
+			gen_statem:cast(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({gzip_response_data_error,_UnzipErr},_StateName,StateData) ->
@@ -374,25 +378,25 @@ handle_info({response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: {response_data,_} in state ~p~n",[StateName]),
 	case filter_stream:process_hooks(response,Dat,StateData#proxy_txn.filters,StateData) of
 		delay -> ok;
-		I -> gen_fsm:send_event(self(),I)
+		I -> gen_statem:cast(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({end_response_data,_}=Dat,StateName,StateData) ->
 %% 	?DEBUG_MSG("Sending event: ~p~n",[I]),
 	case filter_stream:process_hooks(response,Dat,StateData#proxy_txn.filters,StateData) of
 		delay -> ok;
-		I -> gen_fsm:send_event(self(),I)
+		I -> gen_statem:cast(self(),I)
 	end,
 	{next_state, StateName, StateData};
 handle_info({filter_delay,Data},StateName,StateData) ->
-	gen_fsm:send_event(self(),Data),
+	gen_statem:cast(self(),Data),
 	{next_state, StateName, StateData};
 handle_info({userinfo,UInfo},StateName,State) ->
 %% 	?DEBUG_MSG("Got userinfo: ~p~n",[UInfo]),
 	filter_stream:process_hooks(request,UInfo,State#proxy_txn.filters,State),
 	{next_state,StateName,State#proxy_txn{userinfo=UInfo}};
 handle_info({request_filter_response,_}=CErr,StateName,State) ->
-	gen_fsm:send_event(self(),CErr),
+	gen_statem:cast(self(),CErr),
 	{next_state,StateName,State};
 handle_info(get_request_data,StateName,State) ->
 	proxy_read_request:get_next(State#proxy_txn.request_driver),
@@ -401,7 +405,7 @@ handle_info(get_request_data,StateName,State) ->
 %% 	proxy_read_response:get_next(State#proxy_txn.response_driver),
 %% 	{next_state,StateName,State};
 handle_info({proxy_error, Code, Text}, _StateName, StateData) ->
-  gen_fsm:send_event(self(), {error, Code, Text}),
+  gen_statem:cast(self(), {error, Code, Text}),
   {next_state, proxy_error, StateData};
 handle_info(Info, StateName, StateData) ->
 	?ERROR_MSG("Unmatched info: ~p~n",[Info]),
@@ -426,4 +430,6 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-	
+
+callback_mode() ->
+    state_functions.
