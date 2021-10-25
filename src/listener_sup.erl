@@ -57,11 +57,12 @@ start_link() ->
 
 init([]) ->
 	ListenSpec = proxyconf:get(listeners,[]),
+	?DEBUG_MSG("Listeners: ~n~p~n", [ListenSpec]),
 	ListenPropList = ip_listener_list(ListenSpec,[]),
 %% 	?DEBUG_MSG("Got listeners: ~n~p~n",[ListenPropList0]),
 %%   ListenPropList = local_listeners(ListenPropList0),
 %% 	ListenPropList = ip_listener_filter_valid(ListenPropList0),
-%% 	?DEBUG_MSG("Using listeners: ~n~p~n",[ListenPropList]),
+ 	?DEBUG_MSG("Using listeners: ~n~p~n",[ListenPropList]),
 	LCSpecs = lists:map(fun(X) -> ip_listener_childspec(X,ListenPropList) end,proplists:get_keys(ListenPropList)),
 %% 	?DEBUG_MSG("Listener childspecs: ~n~p~n",[LCSpecs]),
   CSpecs = listen_childspec(ListenPropList,[]),

@@ -32,13 +32,16 @@ start_link() ->
 	start_link(get_proxyconfig()).
 
 start_link(Config) ->
+	?INFO_MSG("Config: ~p", [Config]),
 	try
-%% 		case file:consult(Config) of
+ 		case file:consult(Config) of
 
-    case application:get_all_key(surrogate) of
+%%    case application:get_all_key(surrogate) of
 			{ok, PropList} ->
-        Terms = proplists:get_value(env, PropList, []),
-				gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
+				?INFO_MSG("Proplist: ~p", [PropList]),
+%        Terms = proplists:get_value(env, PropList, []),
+%				gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
+				gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=PropList},[]);
 			Err ->
 				?CRITICAL("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
 				error_logger:error_msg("Could not read config from ~p.~n~p~n",[Config,Err]),
@@ -77,8 +80,10 @@ get_proxyconfig2([C|R]) ->
 			_ ->
 				case application:get_env(surrogate,C) of
 					{ok,Cfg} ->
+						?INFO_MSG("Looking for config file: ~p", [Cfg]),
 						case filelib:is_file(Cfg) of
 							true ->
+								?INFO_MSG("File found, returning ~p", [Cfg]),
 								Cfg;
 							false ->
 								get_proxyconfig2(R)
@@ -106,7 +111,7 @@ get_proxyconfig2([C|R]) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init(State) ->
-	?INFO_MSG("Starting ~p.",[?MODULE]),
+	?INFO_MSG("Starting ~p with State ~p.",[?MODULE, State]),
 	mnesia:create_schema([node()]),
 	
 	mnesia:change_table_copy_type(schema,node(),disc_copies),

@@ -13,7 +13,7 @@
 %% --------------------------------------------------------------------
 
 -include("surrogate.hrl").
--include("mysql.hrl").
+%%-include("mysql.hrl").
 
 %% --------------------------------------------------------------------
 %% External exports
@@ -142,43 +142,43 @@ handle_call({mnesia,delete_user,User},_From,State) ->
 		end,
 	Ret = mnesia:transaction(F),
 	{reply,Ret,State};
-handle_call({{mysql,Conn},auth,User0,Pass},_From,State) ->
-	User = string:to_lower(User0),
-	case mysql:fetch(Conn,"select name from user_auth where name='"++User++"' and password=md5('"++Pass++"')") of
-		{data,#mysql_result{rows=[]}} ->
-			{reply,false,State};
-		{data,#mysql_result{rows=[[Name|_]|_]}} ->
-			{reply,{ok,#proxy_userinfo{username=binary_to_list(Name)}},State}
-	end;
-handle_call({{mysql,Conn},add_user,User0,Pass},_From,State) ->
-	User = string:to_lower(User0),
-	case mysql:fetch(Conn,"replace into user_auth (name,password) values ('"++User++"',md5('"++Pass++"'))") of
-		{updated,_} ->
-			{reply,ok,State};
-		Err ->
-			{reply,{error,Err},State}
-	end;
-handle_call({{mysql,Conn},delete_user,User},_From,State) ->
-	mysql:fetch(Conn,"DELETE FROM user_auth where name='"++User++"'"),
-	{reply,ok,State};
-handle_call({{mysql,Conn},is_user,UserName},_From,State) ->
-	User = string:to_lower(UserName),
-	case mysql:fetch(Conn,"select name from user_auth where name='"++User++"'") of
-		{data,#mysql_result{rows=[]}} ->
-			{reply,false,State};
-		{data,#mysql_result{rows=[[Name|_]|_]}} ->
-			{reply,{ok,#proxy_userinfo{username=binary_to_list(Name)}},State}
-	end;
-handle_call({{mysql,Conn},list_users},_From,State) ->
-	case mysql:fetch(Conn,"select name from user_auth order by name") of
-		{data,#mysql_result{rows=Names}} ->
-			N = lists:map(fun(X) ->
-								  [Y] = X,
-								  binary_to_list(Y) end,Names),
-			{reply,N,State};
-		Err ->
-			{reply,Err,State}
-	end;
+%%handle_call({{mysql,Conn},auth,User0,Pass},_From,State) ->
+%%	User = string:to_lower(User0),
+%%	case mysql:fetch(Conn,"select name from user_auth where name='"++User++"' and password=md5('"++Pass++"')") of
+%%		{data,#mysql_result{rows=[]}} ->
+%%			{reply,false,State};
+%%		{data,#mysql_result{rows=[[Name|_]|_]}} ->
+%%			{reply,{ok,#proxy_userinfo{username=binary_to_list(Name)}},State}
+%%	end;
+%%handle_call({{mysql,Conn},add_user,User0,Pass},_From,State) ->
+%%	User = string:to_lower(User0),
+%%	case mysql:fetch(Conn,"replace into user_auth (name,password) values ('"++User++"',md5('"++Pass++"'))") of
+%%		{updated,_} ->
+%%			{reply,ok,State};
+%%		Err ->
+%%			{reply,{error,Err},State}
+%%	end;
+%%handle_call({{mysql,Conn},delete_user,User},_From,State) ->
+%%	mysql:fetch(Conn,"DELETE FROM user_auth where name='"++User++"'"),
+%%	{reply,ok,State};
+%%handle_call({{mysql,Conn},is_user,UserName},_From,State) ->
+%%	User = string:to_lower(UserName),
+%%	case mysql:fetch(Conn,"select name from user_auth where name='"++User++"'") of
+%%		{data,#mysql_result{rows=[]}} ->
+%%			{reply,false,State};
+%%		{data,#mysql_result{rows=[[Name|_]|_]}} ->
+%%			{reply,{ok,#proxy_userinfo{username=binary_to_list(Name)}},State}
+%%	end;
+%%handle_call({{mysql,Conn},list_users},_From,State) ->
+%%	case mysql:fetch(Conn,"select name from user_auth order by name") of
+%%		{data,#mysql_result{rows=Names}} ->
+%%			N = lists:map(fun(X) ->
+%%								  [Y] = X,
+%%								  binary_to_list(Y) end,Names),
+%%			{reply,N,State};
+%%		Err ->
+%%			{reply,Err,State}
+%%	end;
 handle_call({auth,User,Pass},From,State) ->
 	handle_call({State#state.mode,auth,User,Pass},From,State);
 handle_call(list_users,From,State) ->
